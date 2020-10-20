@@ -22,11 +22,11 @@ echo "Start snakemake workflow." >&1
 echo "Start snakemake workflow." >&2                   
 
 snakemake \
---printshellcmds \
+-p \
 --snakefile 'Snakefile' \
 --use-envmodules \
 --jobs 100 \
---cluster "ssh ${PBS_O_LOGNAME}@submit 'cd ${PBS_O_WORKDIR}; qsub \
+--cluster "ssh ${PBS_O_LOGNAME}@submit 'module load bbc/snakemake/snakemake-5.20.1; cd ${PBS_O_WORKDIR}; qsub \
 -q ${PBS_O_QUEUE} \
 -V \
 -l nodes=1:ppn={threads} \
