@@ -1,0 +1,1 @@
+/primary/vari/software/BBC/cellranger/cellranger-4.0.0/lib/python/cellranger/barcodes/737K-august-2016.txt

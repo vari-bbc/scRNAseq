@@ -20,3 +20,6 @@ properties:
     type: string
     enum:
       - indrop_v2
+      - 10x_v1
+      - 10x_v2
+      - 10x_v3
