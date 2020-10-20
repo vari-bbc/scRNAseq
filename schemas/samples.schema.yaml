@@ -1,0 +1,16 @@
+$schema: "http://json-schema.org/draft-06/schema#"
+
+description: samples (fq files).
+properties:
+
+  fq_pref:
+    type: string
+    description: Portion of fq file name preceding R1/R2. Exclude trailing '_'
+  
+  fq_suff:
+    type: string
+    description: Portion of fq file name following R1/R2. Exclude trailing '_'
+
+required:
+  - fq_pref
+  - fq_suff

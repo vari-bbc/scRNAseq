@@ -1,0 +1,22 @@
+$schema: "http://json-schema.org/draft-06/schema#"
+
+description: config file.
+
+type: object
+
+properties:
+  ref:
+    type: object
+    properties:
+      index:
+        type: string
+      annotation:
+        type: string
+    required:
+      - index
+      - annotation
+
+  scrnaseq_tech:
+    type: string
+    enum:
+      - indrop_v2
