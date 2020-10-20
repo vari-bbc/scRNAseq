@@ -36,7 +36,7 @@ def get_star_solo_params(wildcards):
     if(config["scrnaseq_tech"] == "indrop_v2"):
         # see https://github.com/vib-singlecell-nf/star/issues/3
         star_solo_params = """--soloType CB_UMI_Complex \
-           --soloCBwhitelist inDropCB1.txt   inDropCB2.txt \
+           --soloCBwhitelist whitelists/indrop_v2/inDropCB1.txt   whitelists/indrop_v2/inDropCB2.txt \
            --soloAdapterSequence GAGTGATTGCTTGTGACGCCTT  \
            --soloAdapterMismatchesNmax 2  \
            --soloCBmatchWLtype 1MM \
@@ -73,10 +73,13 @@ rule STARsolo:
         outprefix = "analysis/STARsolo/{sample}.",
         tech_params = get_star_solo_params
     threads: 16
+    resources:
+        mem_gb = 180
     log:
-        "logs/star/{sample}.log"
+        stdout="logs/STARsolo/{sample}.o",
+        stderr="logs/STARsolo/{sample}.e"
     benchmark:
-        "benchmarks/star/{sample}.txt"
+        "benchmarks/STARSolo/{sample}.txt"
     envmodules:
         "bbc/STAR/STAR-2.7.3a",
         "bbc/samtools/samtools-1.9"

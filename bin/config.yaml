@@ -10,6 +10,6 @@ ref:
 
 scrnaseq_tech: indrop_v2
 
-run_rna_velocity: false
+run_rna_velocity: true
 
 shared_snakemake_repo: "/secondary/projects/bbc/research/shared_snakemake/"
