@@ -99,8 +99,8 @@ rule STARsolo:
                  "Log.final.out", 
                  "Log.out",
                  "SJ.out.tab"),
-        "analysis/STARsolo/{sample}.Solo.out/Gene/raw/matrix.mtx",
-        "analysis/STARsolo/{sample}.Solo.out/Gene/filtered/matrix.mtx",
+        "analysis/STARsolo/{sample}.Solo.out/Gene/raw/matrix.mtx.gz",
+        "analysis/STARsolo/{sample}.Solo.out/Gene/filtered/matrix.mtx.gz",
     params: 
         index = config["ref"]["index"],
         outprefix = "analysis/STARsolo/{sample}.",
@@ -115,7 +115,8 @@ rule STARsolo:
         "benchmarks/STARSolo/{sample}.txt"
     envmodules:
         "bbc/STAR/STAR-2.7.3a",
-        "bbc/samtools/samtools-1.9"
+        "bbc/samtools/samtools-1.9",
+        "bbc/pigz/pigz-2.4"
     shell:
        """
        STAR  \
@@ -128,6 +129,9 @@ rule STARsolo:
        {params.tech_params}
 
        samtools index {params.outprefix}Aligned.sortedByCoord.out.bam
+
+       pigz -p {threads} {params.outprefix}Solo.out/Gene/raw/*
+       pigz -p {threads} {params.outprefix}Solo.out/Gene/filtered/*
        """
 
 rule gunzip_10x_v3_whitelist:
