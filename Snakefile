@@ -78,12 +78,13 @@ def get_star_solo_params(wildcards):
 def get_star_solo_input(wildcards):
     star_solo_input = {}
     if(config["scrnaseq_tech"] in ["10x_v1", "10x_v2", "10x_v3"]):
-        star_solo_input['fqs'] = expand("raw_data/{sample}_{read}_001.fastq.gz", read=["R2", "R1"], sample=wildcards.sample)
+        star_solo_input['fqs'] = ["raw_data/{wildcards.sample}_R2_001.fastq.gz", "raw_data/{wildcards.sample}_R1_001.fastq.gz"]
         
         if(config["scrnaseq_tech"] == "10x_v3"):
             star_solo_input['10x_v3_whitelist'] = "whitelists/10x_v3/3M-february-2018.txt"
     else:
-        star_solo_input['fqs'] = expand("raw_data/{sample}_{read}_001.fastq.gz", read=["R1", "R2"], sample=wildcards.sample)
+        star_solo_input['fqs'] = ["raw_data/{wildcards.sample}_R1_001.fastq.gz", "raw_data/{wildcards.sample}_R2_001.fastq.gz"]
+
     return(star_solo_input)
 
 rule STARsolo:
