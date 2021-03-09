@@ -8,7 +8,8 @@ set -euo pipefail
 
 cd ${PBS_O_WORKDIR}
 
-module load bbc/snakemake/snakemake-5.20.1
+snakemake_module="bbc/snakemake/snakemake-5.28.0"
+module load ${snakemake_module}
 
 # make logs dir if it does not exist already. Without this, logs/ is automatically generate only after the first run of the pipeline
 logs_dir="logs/snakemake_runs"
@@ -17,7 +18,7 @@ logs_dir="logs/snakemake_runs"
 TIME=$(date "+%Y-%m-%d_%H.%M.%S")
 snakemake --snakefile 'Snakefile' --dag | dot -Tpng > $logs_dir/dag_${PBS_JOBID}.png
 snakemake --snakefile 'Snakefile' --filegraph | dot -Tpng > $logs_dir/filegraph_${PBS_JOBID}.png
-snakemake --snakefile 'Snakefile' -rulegraph | dot -Tpng > $logs_dir/rulegraph_${PBS_JOBID}.png
+snakemake --snakefile 'Snakefile' --rulegraph | dot -Tpng > $logs_dir/rulegraph_${PBS_JOBID}.png
 
 echo "Start snakemake workflow." >&1                   
 echo "Start snakemake workflow." >&2                   
@@ -27,7 +28,7 @@ snakemake \
 --snakefile 'Snakefile' \
 --use-envmodules \
 --jobs 100 \
---cluster "ssh ${PBS_O_LOGNAME}@submit 'module load bbc/snakemake/snakemake-5.20.1; cd ${PBS_O_WORKDIR}; qsub \
+--cluster "ssh ${PBS_O_LOGNAME}@submit 'module load ${snakemake_module}; cd ${PBS_O_WORKDIR}; qsub \
 -q ${PBS_O_QUEUE} \
 -V \
 -l nodes=1:ppn={threads} \
