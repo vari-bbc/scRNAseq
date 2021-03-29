@@ -25,6 +25,7 @@ echo "Start snakemake workflow." >&2
 
 snakemake \
 -p \
+--latency-wait 20 \
 --snakefile 'Snakefile' \
 --use-envmodules \
 --jobs 100 \
