@@ -7,8 +7,8 @@ ref:
   # path/to/gtf/file/with/transcripts.gtf
   annotation:     /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/annotation/dm6_BDGP6.28.100.gtf
 
+# Valid values are 'indrop_v2', '10x_v1', '10x_v2', '10x_v3', 'cellseq192'
 scrnaseq_tech: cellseq192
 
 run_rna_velocity: true
 
-shared_snakemake_repo: "/secondary/projects/bbc/research/shared_snakemake/"
