@@ -4,8 +4,7 @@ import os
 import re
 from snakemake.utils import validate, min_version
 ##### set minimum snakemake version #####
-min_version("5.20.1")
-
+min_version("5.28.0")
 
 ##### load config and sample sheets #####
 
@@ -15,20 +14,62 @@ validate(config, schema="schemas/config.schema.yaml")
 samples = pd.read_table("bin/samples.tsv")
 validate(samples, "schemas/samples.schema.yaml")
 
-# include rules from shared directory
-
-#include: os.path.join(config['shared_snakemake_repo'], "rules/preprocess/convert2fastq_gz")
-include: os.path.join(config['shared_snakemake_repo'], "rules/fastq_qc/fastq_lengths")
-include: os.path.join(config['shared_snakemake_repo'], "rules/fastq_qc/fastq_screen")
-include: os.path.join(config['shared_snakemake_repo'], "rules/fastq_qc/fastqc")
-
 rule all:
     input:
-        expand("analysis/fastq_lengths/{sample.fq_pref}{read}001.sample100000.seed123.fq_lens.txt", sample=samples.itertuples(), read=["_R1_","_R2_"]),
-        expand("analysis/fastq_screen/{sample.fq_pref}{read}001_screen{file_ext}", sample=samples.itertuples(), read=["_R1_","_R2_"], file_ext=[".html",".txt"]),
-        expand("analysis/fastqc/{sample.fq_pref}{read}001_fastqc{file_ext}", sample=samples.itertuples(), read=["_R1_","_R2_"], file_ext=[".html",".zip"]),
-        expand("analysis/STARsolo/{fq_pref}.Aligned.sortedByCoord.out.bam", fq_pref=samples["fq_pref"]),
+        expand("analysis/fastqc/{fq_pref}_fastqc.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
+        expand("analysis/fastq_screen/{fq_pref}_screen.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
+        expand("analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam", sample=samples["sample"]),
 
+rule fastqc:
+    """
+    Run fastqc on raw_data/ files.
+    """
+    input:
+        "raw_data/{fq_pref}.fastq.gz"
+    output:
+        html="analysis/fastqc/{fq_pref}_fastqc.html",
+        zip="analysis/fastqc/{fq_pref}_fastqc.zip"
+    params:
+        outdir="analysis/fastqc/"
+    log:
+        stdout="logs/fastqc/{fq_pref}.o",
+        stderr="logs/fastqc/{fq_pref}.e"
+    benchmark:
+        "benchmarks/fastqc/{fq_pref}.txt"
+    envmodules:
+        "bbc/fastqc/fastqc-0.11.9"
+    threads: 1
+    resources:
+        mem_gb = 32
+    shell:
+        """
+        fastqc --outdir {params.outdir} {input}
+        """
+
+rule fastq_screen:
+    """
+    Run fastq_screen to detect any contamination from other species or excessive rRNA.
+    """
+    input:
+        "raw_data/{fq_pref}.fastq.gz"
+    output:
+        html = "analysis/fastq_screen/{fq_pref}_screen.html",
+        txt = "analysis/fastq_screen/{fq_pref}_screen.txt",
+    params:
+    log:
+        stdout="logs/fastq_screen/{fq_pref}.o",
+        stderr="logs/fastq_screen/{fq_pref}.e"
+    benchmark:
+        "benchmarks/fastq_screen/{fq_pref}.txt"
+    envmodules:
+        "bbc/fastq_screen/fastq_screen-0.14.0"
+    threads: 8
+    resources:
+        mem_gb = 32
+    shell:
+        """
+        fastq_screen --threads {threads} --outdir analysis/fastq_screen/ {input}
+        """
 
 def get_star_solo_params(wildcards):
     # modify parameters depending on scRNA-seq tech
@@ -44,7 +85,7 @@ def get_star_solo_params(wildcards):
 
     if(config["scrnaseq_tech"] == "10x_v1"):
         # https://www.biostars.org/p/462568/
-        star_solo_params = """--soloType CB UMI Simple \
+        star_solo_params = """--soloType CB_UMI_Simple \
            --soloCBwhitelist whitelists/10x_v1/737K-april-2014_rc.txt \
            --soloCBlen 14 \
            --soloUMIstart 15 \
@@ -52,7 +93,7 @@ def get_star_solo_params(wildcards):
 
     if(config["scrnaseq_tech"] == "10x_v2"):
         # https://www.biostars.org/p/462568/
-        star_solo_params = """--soloType CB UMI Simple \
+        star_solo_params = """--soloType CB_UMI_Simple \
            --soloCBwhitelist whitelists/10x_v2/737K-august-2016.txt \
            --soloCBlen 16 \
            --soloUMIstart 17 \
@@ -60,11 +101,26 @@ def get_star_solo_params(wildcards):
 
     if(config["scrnaseq_tech"] == "10x_v3"):
         # https://www.biostars.org/p/462568/
-        star_solo_params = """--soloType CB UMI Simple \
+        star_solo_params = """--soloType CB_UMI_Simple \
            --soloCBwhitelist whitelists/10x_v3/3M-february-2018.txt \
            --soloCBlen 16 \
            --soloUMIstart 17 \
            --soloUMIlen 12"""
+    
+    if(config["scrnaseq_tech"] == "cellseq192"):
+        # Adapted from Snakepipes
+        # See https://github.com/maxplanck-ie/snakepipes/blob/3f3d2bf535ed217e9f511c1d1463cbe57a8fe9f3/snakePipes/workflows/scRNAseq/internals.snakefile
+        # See https://github.com/maxplanck-ie/snakepipes/blob/b23d4e420b0acb5df90401dd7906d361af945e63/snakePipes/shared/rules/scRNAseq_STARsolo.snakefile
+        star_solo_params = """--soloType CB_UMI_Simple \
+           --soloCBwhitelist whitelists/cellseq192/celseq_barcodes.192.1col.txt \
+           --soloUMIstart 1 \
+           --soloUMIlen 6 \
+           --soloCBstart 7 \
+           --soloCBlen 6 \
+           --soloBarcodeReadLength 0 \
+           --soloCBmatchWLtype Exact \
+           --soloStrand Forward \
+           --soloUMIdedup Exact"""
 
     # Add RNA velocity if requested
     if(config["run_rna_velocity"]):
@@ -77,13 +133,10 @@ def get_star_solo_params(wildcards):
 
 def get_star_solo_input(wildcards):
     star_solo_input = {}
-    if(config["scrnaseq_tech"] in ["10x_v1", "10x_v2", "10x_v3"]):
-        star_solo_input['fqs'] = ["raw_data/{sample}_R2_001.fastq.gz".format(sample=wildcards.sample), "raw_data/{sample}_R1_001.fastq.gz".format(sample=wildcards.sample)]
-        
-        if(config["scrnaseq_tech"] == "10x_v3"):
-            star_solo_input['10x_v3_whitelist'] = "whitelists/10x_v3/3M-february-2018.txt"
+    if(config["scrnaseq_tech"] in ["10x_v1", "10x_v2", "10x_v3", "cellseq192"]):
+        star_solo_input['fqs'] = ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2'])) + ' ' + ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1']))
     else:
-        star_solo_input['fqs'] = ["raw_data/{sample}_R1_001.fastq.gz".format(sample=wildcards.sample), "raw_data/{sample}_R2_001.fastq.gz".format(sample=wildcards.sample)]
+        star_solo_input['fqs'] = ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1'])) + ' ' + ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2']))
 
     return(star_solo_input)
 
@@ -91,8 +144,10 @@ rule STARsolo:
     """
     Run STARsolo.
     """
-    input: 
-        unpack(get_star_solo_input),
+    input:
+        lambda wildcards: expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1']),
+        lambda wildcards: expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2']),
+        "whitelists/10x_v3/3M-february-2018.txt" if config["scrnaseq_tech"] == "10x_v3" else [],
     output:
         multiext("analysis/STARsolo/{sample}.", 
                  "Aligned.sortedByCoord.out.bam", 
@@ -105,7 +160,8 @@ rule STARsolo:
     params: 
         index = config["ref"]["index"],
         outprefix = "analysis/STARsolo/{sample}.",
-        tech_params = get_star_solo_params
+        tech_params = get_star_solo_params,
+        fqs_and_rg = get_star_solo_input
     threads: 16
     resources:
         mem_gb = 180
@@ -115,7 +171,7 @@ rule STARsolo:
     benchmark:
         "benchmarks/STARSolo/{sample}.txt"
     envmodules:
-        "bbc/STAR/STAR-2.7.3a",
+        "bbc/STAR/STAR-2.7.8a",
         "bbc/samtools/samtools-1.9",
         "bbc/pigz/pigz-2.4"
     shell:
@@ -123,7 +179,7 @@ rule STARsolo:
        STAR  \
        --runThreadN {threads} \
        --genomeDir {params.index} \
-       --readFilesIn {input.fqs} \
+       --readFilesIn {params.fqs_and_rg[fqs]} \
        --readFilesCommand zcat  \
        --outSAMtype BAM SortedByCoordinate \
        --outFileNamePrefix {params.outprefix} \
