@@ -1,5 +1,5 @@
-sample	fq1	fq2
-Sample1	LibA_L000_R1_001.fastq.gz	LibA_L000_R2_001.fastq.gz
-Sample1	LibB_L000_R1_001.fastq.gz	LibB_L000_R2_001.fastq.gz
-Sample1	LibC_L000_R1_001.fastq.gz	LibC_L000_R2_001.fastq.gz
-Sample1	LibD_L000_R1_001.fastq.gz	LibD_L000_R2_001.fastq.gz
+sample	fq1	fq2	RG
+Sample1	LibA_L000_R1_001.fastq.gz	LibA_L000_R2_001.fastq.gz	
+Sample1	LibB_L000_R1_001.fastq.gz	LibB_L000_R2_001.fastq.gz	
+Sample1	LibC_L000_R1_001.fastq.gz	LibC_L000_R2_001.fastq.gz	
+Sample1	LibD_L000_R1_001.fastq.gz	LibD_L000_R2_001.fastq.gz	

@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import re
+import gzip
 from snakemake.utils import validate, min_version
 ##### set minimum snakemake version #####
 min_version("5.28.0")
@@ -133,10 +134,47 @@ def get_star_solo_params(wildcards):
 
 def get_star_solo_input(wildcards):
     star_solo_input = {}
+    fq1_files = expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1'])
+    fq2_files = expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2'])
+
     if(config["scrnaseq_tech"] in ["10x_v1", "10x_v2", "10x_v3", "cellseq192"]):
-        star_solo_input['fqs'] = ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2'])) + ' ' + ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1']))
+        star_solo_input['fqs'] = ','.join(fq2_files) + ' ' + ','.join(fq1_files)
     else:
-        star_solo_input['fqs'] = ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1'])) + ' ' + ','.join(expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2']))
+        star_solo_input['fqs'] = ','.join(fq1_files) + ' ' + ','.join(fq2_files)
+
+    # Extract read group information
+    ## Use the user-specified read group info if available
+    rg_lines = samples[samples['sample']==wildcards.sample]['RG'].values
+    if(pd.isnull(rg_lines).any()):
+        rg_lines = []
+        
+        ## Extract the first line of each fq1 file
+        first_lines = []
+        for fq_file in fq1_files:
+            with gzip.open(fq_file,'rt') as f:
+                first_lines.append(f.readline().strip())
+
+        ## Compile the read group line for each library
+        for i in range(len(fq1_files)):
+            first_line_split = first_lines[i].split(':')
+            
+            flowcell = first_line_split[2]
+            lane = first_line_split[3]
+            lib_barcode = first_line_split[9]
+            
+            sample = wildcards.sample
+            
+            # Note that we set LB to the sample name so that duplicates will be identified across multiple files representing the same sample. This makes sense if files are the same library sequenced on different lanes or if the different libraries are derived from the same sample in which the UMIs were attached. 
+            # Secondly, we set RG ID to flowcell.lane.lib_barcode if merging more than 1 fastq file, so that reads from each file can be differentiated.
+            rgid = '.'.join([flowcell, lane] if len(fq1_files) == 1 else [flowcell, lane, lib_barcode])
+            rgpu = '.'.join([flowcell, lane, lib_barcode])
+            rglb = sample
+            rgsm = sample
+
+            rg_line = "ID:" + rgid + " PU:" + rgpu + " LB:" + rgsm + " PL:ILLUMINA SM:" + rgsm
+            rg_lines.append(rg_line)
+
+    star_solo_input['RG'] = ' , '.join(rg_lines)
 
     return(star_solo_input)
 
@@ -180,6 +218,7 @@ rule STARsolo:
        --runThreadN {threads} \
        --genomeDir {params.index} \
        --readFilesIn {params.fqs_and_rg[fqs]} \
+       --outSAMattrRGline {params.fqs_and_rg[RG]} \
        --readFilesCommand zcat  \
        --outSAMtype BAM SortedByCoordinate \
        --outFileNamePrefix {params.outprefix} \
