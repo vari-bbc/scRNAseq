@@ -19,7 +19,8 @@ rule all:
     input:
         expand("analysis/fastqc/{fq_pref}_fastqc.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
         expand("analysis/fastq_screen/{fq_pref}_screen.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
-        expand("analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam", sample=samples["sample"]),
+        expand("analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam", sample=np.unique(samples["sample"].values)),
+        expand("analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html", sample=np.unique(samples["sample"].values)) if config['scrnaseq_tech'] == 'cellseq192' else [],
 
 rule fastqc:
     """
@@ -193,8 +194,7 @@ rule STARsolo:
                  "Log.final.out", 
                  "Log.out",
                  "SJ.out.tab"),
-        "analysis/STARsolo/{sample}.Solo.out/Gene/raw/matrix.mtx.gz",
-        "analysis/STARsolo/{sample}.Solo.out/Gene/filtered/matrix.mtx.gz",
+        expand("analysis/STARsolo/{{sample}}.Solo.out/Gene/{type}/{file}", type=['raw','filtered'], file=['matrix.mtx.gz','barcodes.tsv.gz','features.tsv.gz']),
     params: 
         index = config["ref"]["index"],
         outprefix = "analysis/STARsolo/{sample}.",
@@ -252,6 +252,24 @@ rule gunzip_10x_v3_whitelist:
        gunzip -c {input} > {output}
        """
 
-
-
+rule read_STARsolo_raw_counts:
+    """
+    Run this only if cellseq192. This outputs a counts matrix with the barcode names converted to 1-192 ID numbers.
+    """
+    input:
+        expand("analysis/STARsolo/{{sample}}.Solo.out/Gene/raw/{file}", file=['matrix.mtx.gz','barcodes.tsv.gz','features.tsv.gz'])
+    output:
+        "analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html"
+    log:
+        stdout="logs/read_STARsolo_raw_counts/{sample}.o",
+        stderr="logs/read_STARsolo_raw_counts/{sample}.e"
+    params:
+        decoder="whitelists/cellseq192/celseq_barcodes.192.txt"
+    envmodules:
+        "bbc/R/R-4.0.2-setR_LIBS_USER"
+    threads: 1
+    resources:
+        mem_gb = 20
+    script:
+        "scripts/read_star_solo_raw.Rmd"
 

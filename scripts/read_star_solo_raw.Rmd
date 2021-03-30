@@ -1,0 +1,81 @@
+---
+title: "celseq2"
+author: "Kin Lau"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    code_folding: hide
+    self_contained: yes
+    toc: true
+    toc_depth: 5
+    toc_float:
+      collapsed: true
+      smooth_scroll: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+# set the library path
+#.libPaths("/secondary/projects/bbc/tools/kin_R_packages/R-3.6.0_20190701_pkges")
+
+knitr::opts_chunk$set(echo=TRUE, warning=TRUE, message=TRUE, cache=TRUE, dev=c('png','pdf'), fig.width=8, fig.height=8)
+```
+
+# Packages loaded 
+
+```{r loadlibs, echo=TRUE, warning=TRUE, message=TRUE, cache=FALSE}
+library(readr)
+library(stringr)
+library(dplyr)
+library(tibble)
+library(Seurat)
+library(Matrix)
+```
+
+# Define function for reading in counts
+
+```{r define_func}
+# define function for reading from 10x-style output directory and renaming by Celseq 192 barcode number as listed in Sagar...Gruen paper
+read10x_and_bc_num_as_colnames <- function(tenx_dir, decoder){
+  counts <- Seurat::Read10X(tenx_dir)
+  
+  # check that barcode sequences match
+  stopifnot(identical(sort(colnames(counts)), sort(decoder$bc)))
+  
+  # rename columns with bc_num
+  colnames(counts) <- decoder$bc_num[match(colnames(counts), decoder$bc)]
+  
+  tibble::as_tibble(counts, rownames="Gene") %>% dplyr::select(Gene, as.character(1:192))
+}
+```
+
+# Read counts and then write to file
+
+```{r read_counts}
+# get input, output, params from the Snakemake pipeline
+out_file <- snakemake@output[[1]] %>% str_replace(".html", ".txt")
+out_file
+starsolo_raw_dir <- dirname(snakemake@input[[1]])
+starsolo_raw_dir # print out starsolo dir
+decoder <- snakemake@params[["decoder"]]
+decoder
+
+# read barcode decoder from file in snakePipes installation
+bc_nums_decoder <- read_tsv(decoder, col_names = c("bc_num","bc"))
+
+# read the counts and rename to BC number
+counts <- read10x_and_bc_num_as_colnames(starsolo_raw_dir, bc_nums_decoder)
+str(counts) # print out str()
+
+# output the counts to files
+write_tsv(counts, out_file)
+```
+
+# Session Info
+
+```{r session_info, echo = TRUE}
+sessionInfo()
+```
+
+
+
