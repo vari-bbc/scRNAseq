@@ -6,9 +6,13 @@ ref:
   index:          /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/indexes/star
   # path/to/gtf/file/with/transcripts.gtf
   annotation:     /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/annotation/dm6_BDGP6.28.100.gtf
+  # Known variants for GATK. If providing more than one, separate with a ',' (no spaces).
+  known_variants: dgrp2_dm6.no_chrUn.vcf.gz
+  snpeff_db_id: 'BDGP6.86'
 
 # Valid values are 'indrop_v2', '10x_v1', '10x_v2', '10x_v3', 'cellseq192'
 scrnaseq_tech: cellseq192
 
 run_rna_velocity: true
 
+call_variants: true
