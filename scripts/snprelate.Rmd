@@ -11,7 +11,6 @@ output:
     toc: true
     toc_depth: 5
     toc_float:
-      collapsed: true
       smooth_scroll: false
     number_sections: true
 ---
@@ -24,7 +23,7 @@ start_tm
 
 ```{r setup, include=FALSE}
 # set the library path
-knitr::opts_chunk$set(echo=TRUE, warning=TRUE, message=TRUE, cache=FALSE)
+knitr::opts_chunk$set(echo=TRUE, warning=TRUE, message=TRUE, cache=FALSE, dev=c('pdf'), fig.width=8, fig.height=8)
 ```
 
 # Packages loaded
@@ -49,6 +48,13 @@ vcf.fn <- snakemake@input[[1]]
 # convert to GDS
 gds_file <- snakemake@params[["gds"]]
 snpgdsVCF2GDS(vcf.fn, gds_file, method="biallelic.only")
+
+# Figures
+old_figs_folder <- snakemake@params[["figures_dir"]]
+new.folder <- snakemake@params[["new_figures_dir"]]
+
+# Set maximum missing rate
+missingrate <- 0.05
 ```
 
 # Open the GDS file
@@ -61,12 +67,12 @@ genofile <- snpgdsOpen(gds_file)
 
 We use an LD threshold of 0.5. SNPrelate scans the genome with a sliding window, discarding SNPs within each window of the LD exceeds 0.5. 
 
-We also keep only SNPs with a missing rate of 0 (no missing data).
+We also keep only SNPs with a missing rate of `r missingrate`.
 
 ```{r ldprune}
 set.seed(1000)
 # Try different LD thresholds for sensitivity analysis
-snpset <- snpgdsLDpruning(genofile, ld.threshold=0.5, missing.rate=0) # using LD threshold default used in SNPhylo
+snpset <- snpgdsLDpruning(genofile, ld.threshold=0.5, missing.rate=missingrate) # using LD threshold default used in SNPhylo
 # Get all selected snp id
 snpset.id <- unlist(snpset)
 ```
@@ -77,7 +83,7 @@ Average IBS is a metric for each pair of samples describing the average porporti
 
 ```{r ibs_mat}
 set.seed(100)
-ibs <- snpgdsIBS(genofile, num.thread=1, autosome.only=TRUE, missing.rate=0, snp.id = snpset.id)
+ibs <- snpgdsIBS(genofile, num.thread=1, autosome.only=TRUE, missing.rate=missingrate, snp.id = snpset.id)
 # we find 1- ibs so that the values become 'distances' where higher values represent more dissimilar pairs of samples
 one_minus_ibs <- 1 - ibs$ibs
 colnames(one_minus_ibs) <- ibs$sample.id
@@ -107,7 +113,7 @@ ibs.hc <- snpgdsHCluster(ibs)
 rv <- snpgdsCutTree(ibs.hc)
 ```
 
-```{r plot_dendro}
+```{r plot_dendro, fig.width=12, fig.height=6}
 plot(rv$dendrogram, main="Dendrogram based on IBS")
 ```
 
@@ -115,7 +121,7 @@ plot(rv$dendrogram, main="Dendrogram based on IBS")
 
 ```{r pca}
 #pca <- snpgdsPCA(genofile, snp.id=snpset.id, num.thread=1)
-pca <- snpgdsPCA(genofile, num.thread=1, autosome.only=TRUE, missing.rate=0, snp.id = snpset.id)
+pca <- snpgdsPCA(genofile, num.thread=1, autosome.only=TRUE, missing.rate=missingrate, snp.id = snpset.id)
 # variance proportion (%)
 pc.percent <- pca$varprop*100
 head(round(pc.percent, 2))
@@ -134,7 +140,7 @@ ggplot(tab, aes(x=EV3, y=EV4, label=sample.id)) + geom_point() + ggrepel::geom_l
 
 # No LD pruning
 
-Here we don't prune for LD but we keep the other filters of biallelic SNPs and no missing data.
+Here we don't prune for LD but we keep the other filters of biallelic SNPs and same missing data rate.
 
 ## Identity-By-State (IBS)
 
@@ -142,7 +148,7 @@ Average IBS is a metric for each pair of samples describing the average porporti
 
 ```{r ibs_mat_noLDpruning}
 set.seed(100)
-ibs <- snpgdsIBS(genofile, num.thread=1, autosome.only=TRUE, missing.rate=0)
+ibs <- snpgdsIBS(genofile, num.thread=1, autosome.only=TRUE, missing.rate=missingrate)
 # we find 1- ibs so that the values become 'distances' where higher values represent more dissimilar pairs of samples
 one_minus_ibs <- 1 - ibs$ibs
 colnames(one_minus_ibs) <- ibs$sample.id
@@ -168,7 +174,7 @@ ibs.hc <- snpgdsHCluster(ibs)
 rv <- snpgdsCutTree(ibs.hc)
 ```
 
-```{r plot_dendro_noLDpruning}
+```{r plot_dendro_noLDpruning, fig.width=12, fig.height=6}
 plot(rv$dendrogram, main="Dendrogram based on IBS")
 ```
 
@@ -176,7 +182,7 @@ plot(rv$dendrogram, main="Dendrogram based on IBS")
 
 ```{r pca_noLDpruning}
 #pca <- snpgdsPCA(genofile, snp.id=snpset.id, num.thread=1)
-pca <- snpgdsPCA(genofile, num.thread=1, autosome.only=TRUE, missing.rate=0)
+pca <- snpgdsPCA(genofile, num.thread=1, autosome.only=TRUE, missing.rate=missingrate)
 # variance proportion (%)
 pc.percent <- pca$varprop*100
 head(round(pc.percent, 2))
@@ -198,6 +204,14 @@ ggplot(tab, aes(x=EV3, y=EV4, label=sample.id)) + geom_point() + ggrepel::geom_l
 
 ```{r closegds}
 closefn.gds(genofile)
+```
+
+# Copy figures to a different location to prevent deletion
+```{r copy_figs}
+dir.create(new.folder, recursive = TRUE)
+
+file.copy(list.files(old_figs_folder, full.names = TRUE), new.folder, recursive = TRUE)
+
 ```
 
 # SessionInfo
