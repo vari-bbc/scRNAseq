@@ -16,8 +16,8 @@ logs_dir="logs/snakemake_runs"
 [[ -d $logs_dir ]] || mkdir -p $logs_dir
 
 TIME=$(date "+%Y-%m-%d_%H.%M.%S")
-snakemake --snakefile 'Snakefile' --dag | dot -Tpng > $logs_dir/dag_${PBS_JOBID}.png
-snakemake --snakefile 'Snakefile' --filegraph | dot -Tpng > $logs_dir/filegraph_${PBS_JOBID}.png
+#snakemake --snakefile 'Snakefile' --dag | dot -Tpng > $logs_dir/dag_${PBS_JOBID}.png
+#snakemake --snakefile 'Snakefile' --filegraph | dot -Tpng > $logs_dir/filegraph_${PBS_JOBID}.png
 snakemake --snakefile 'Snakefile' --rulegraph | dot -Tpng > $logs_dir/rulegraph_${PBS_JOBID}.png
 
 echo "Start snakemake workflow." >&1                   
