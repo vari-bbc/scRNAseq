@@ -678,9 +678,33 @@ rule merge_and_filter_vcf:
         vt peek -r {params.ref_fasta} {output.pass_only} 2> {output.vt_peek_pass} 1>>{log.stdout}
         """
 
+rule reheader_vcf:
+    input:
+        vcf="analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz",
+    output:
+        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
+    log:
+        stdout="logs/08b_reheader_vcf/out.o",
+        stderr="logs/08b_reheader_vcf/err.e"
+    benchmark:
+        "benchmarks/08b_reheader_vcf/bench.txt"
+    params:
+        sample_decoder=config['sample_decoder']
+    envmodules:
+        "bbc/bcftools/bcftools-1.12"
+    threads: 4
+    resources: 
+        mem_gb = 80
+    shell:
+        """
+        bcftools reheader --threads {threads} -s {params.sample_decoder} -o {output} {input.vcf}
+        bcftools index --threads {threads} -t {output}
+        """
+
+
 rule variant_annot:
     input:
-        "analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
         html="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff.html",
         vcf="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz",
@@ -729,7 +753,7 @@ rule variant_annot:
 
 rule snprelate:
     input:
-        "analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
         "analysis/variant_calling/09b_snp_pca_and_dendro/report.html"
     params:

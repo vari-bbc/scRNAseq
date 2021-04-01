@@ -17,3 +17,6 @@ scrnaseq_tech: cellseq192
 run_rna_velocity: true
 
 call_variants: true
+
+# tab-delimited file to rename the final VCF file. Col1 is the old name and col2 is the new name. Note that the 'old name' will be 'samplename.cellbarcode', where sample name comes from the 'sample' column in the samples.tsv
+sample_decoder: "vcf_reheader.tsv"
