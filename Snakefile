@@ -26,7 +26,7 @@ call_variants_for_small_contigs = True
 bp_cutoff = 1000000
 
 # How many small contigs to each group
-step = 100
+step = 300
 
 # Group contigs for GATK. Big contigs by themselves. Small contigs together.
 fai = pd.read_table(config['ref']['fai'],
@@ -45,9 +45,9 @@ fai_small = fai[fai['len'] <= bp_cutoff]
 if call_variants_for_small_contigs:
     data = fai_small['name'].tolist()
     chunks = [data[x:x+step] for x in range(0, len(data), step)]
-    print(chunks)
+    #print(chunks)
     for i in range(len(chunks)):
-        grp_name = 'contigs' + str(i)
+        grp_name = 'contigs' + str(i).zfill(2)
         contig_grps.loc[len(contig_grps.index)] = [grp_name, ','.join(chunks[i])]
 
 
@@ -577,12 +577,40 @@ rule jointgeno:
         GenotypeGVCFs \
         -R {params.ref_fasta} \
         -V gendb://{params.genomicsdb} \
-        -O {output.vcf} 
+        -O {output.vcf}
+
+        """
+
+rule sortVCF:
+    input:
+        vcf="analysis/variant_calling/07_jointgeno/all.{contig_group}.vcf.gz",
+    output:
+        sorted_vcf="analysis/variant_calling/07b_sortvcf/all.{contig_group}.sort.vcf.gz"
+    log:
+        stdout="logs/07b_sortvcf/all.{contig_group}.o",
+        stderr="logs/07b_sortvcf/all.{contig_group}.e"
+    benchmark:
+        "benchmarks/07b_sortvcf/all.{contig_group}.txt"
+    params:
+        dictionary=config['ref']['dict'],
+    envmodules:
+        "bbc/gatk/gatk-4.1.8.1"
+    threads: 4
+    resources: 
+        mem_gb = 80
+    shell:
+        """
+        gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
+        SortVcf \
+        -I {input.vcf} \
+        -O {output.sorted_vcf} \
+        -SD {params.dictionary} 
+
         """
 
 rule merge_and_filter_vcf:
     input:
-        expand("analysis/variant_calling/07_jointgeno/all.{contig_grp}.vcf.gz", contig_grp=contig_grps.name)
+        expand("analysis/variant_calling/07b_sortvcf/all.{contig_grp}.sort.vcf.gz", contig_grp=contig_grps.name)
     output:
         raw="analysis/variant_calling/08_merge_and_filter/all.merged.vcf.gz",
         filt="analysis/variant_calling/08_merge_and_filter/all.merged.filt.vcf.gz",
@@ -596,6 +624,7 @@ rule merge_and_filter_vcf:
         "benchmarks/08_merge_and_filter/benchmark.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
+        dictionary=config['ref']['dict'],
         in_vcfs = lambda wildcards, input: ' '.join(['--INPUT ' + vcf for vcf in input]) 
     envmodules:
         "bbc/gatk/gatk-4.1.8.1",
@@ -608,12 +637,13 @@ rule merge_and_filter_vcf:
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
         MergeVcfs \
         {params.in_vcfs} \
+        --SEQUENCE_DICTIONARY {params.dictionary} \
         --OUTPUT {output.raw} 
-
-        vt peek -r {params.ref_fasta} {output.raw} 2> {output.vt_peek_raw} 1>>{log.stdout}
-
+        
         echo "mergeVcfs done." >> {log.stdout}
         echo "mergeVcfs done." >> {log.stderr}
+
+        vt peek -r {params.ref_fasta} {output.raw} 2> {output.vt_peek_raw} 1>>{log.stdout}
 
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
         VariantFiltration \
@@ -625,6 +655,10 @@ rule merge_and_filter_vcf:
         --filter "FS > 30.0" \
         --filter-name "QD" \
         --filter "QD < 2.0" \
+        --genotype-filter-name "GQ" \
+        --genotype-filter-expression "GQ < 15.0" \
+        --genotype-filter-name "DP" \
+        --genotype-filter-expression "DP < 10.0" \
         -O {output.filt} 
         
         echo "VariantFiltration done." >> {log.stdout}
@@ -635,6 +669,7 @@ rule merge_and_filter_vcf:
         -R {params.ref_fasta} \
         -V {output.filt} \
         --exclude-filtered \
+        --set-filtered-gt-to-nocall \
         -O {output.pass_only} 
         
         echo "SelectVariants done." >> {log.stdout}
@@ -698,7 +733,9 @@ rule snprelate:
     output:
         "analysis/variant_calling/09b_snp_pca_and_dendro/report.html"
     params:
-        gds="analysis/variant_calling/09b_snp_pca_and_dendro/all.gds"
+        gds="analysis/variant_calling/09b_snp_pca_and_dendro/all.gds",
+        figures_dir="analysis/variant_calling/09b_snp_pca_and_dendro/report_files/figure-html/",
+        new_figures_dir="analysis/variant_calling/09b_snp_pca_and_dendro/individual_figures/"
     log:
         stdout="logs/09b_snp_pca_and_dendro/out.o",
         stderr="logs/09b_snp_pca_and_dendro/out.e"

@@ -2,6 +2,7 @@ ref:
   # path/to/reference/gDNA.fasta
   sequence:       /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.fa
   fai:            /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.fa.fai
+  dict:           /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.dict
   # path/to/STAR/index/directory
   index:          /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/indexes/star
   # path/to/gtf/file/with/transcripts.gtf
