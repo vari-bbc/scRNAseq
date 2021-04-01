@@ -341,7 +341,7 @@ rule append_CB_to_SM:
     input:
         "analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.TAG_CB_{CB}.bam" 
     output:
-        bam="analysis/variant_calling/00b_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam",
+        bam=temp("analysis/variant_calling/00b_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam"),
     params: 
     log:
         stdout="logs/00b_append_CB_to_SM/{sample}/{CB}.o",
@@ -365,7 +365,7 @@ rule markdups:
     input:
         "analysis/variant_calling/00b_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam" 
     output:
-        bam="analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam",
+        bam=temp("analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"),
         metrics="analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.metrics"
     params: 
     log:
@@ -393,7 +393,7 @@ rule splitncigar:
     input:
         "analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"
     output:        
-        "analysis/variant_calling/02_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam"
+        temp("analysis/variant_calling/02_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam")
     params:
         ref_fasta=config["ref"]["sequence"],
     log:
