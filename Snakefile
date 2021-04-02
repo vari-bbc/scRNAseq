@@ -55,9 +55,10 @@ rule all:
     input:
         expand("analysis/fastqc/{fq_pref}_fastqc.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
         expand("analysis/fastq_screen/{fq_pref}_screen.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
-        'analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
-        'analysis/variant_calling/09b_snp_pca_and_dendro/report.html',
-        'analysis/variant_calling/08c_extract_ADs/all.merged.filt.PASS.reheader.AD.table'
+        expand("analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html", sample = pd.unique(samples['sample']),
+        ['analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
+        'analysis/variant_calling/10b_snp_pca_and_dendro/report.html',
+        'analysis/variant_calling/10c_extract_ADs/all.merged.filt.PASS.reheader.AD.table'] if config['call_variants'] else [] 
 
 rule fastqc:
     """
@@ -587,12 +588,12 @@ rule sortVCF:
     input:
         vcf="analysis/variant_calling/07_jointgeno/all.{contig_group}.vcf.gz",
     output:
-        sorted_vcf="analysis/variant_calling/07b_sortvcf/all.{contig_group}.sort.vcf.gz"
+        sorted_vcf="analysis/variant_calling/08_sortvcf/all.{contig_group}.sort.vcf.gz"
     log:
-        stdout="logs/07b_sortvcf/all.{contig_group}.o",
-        stderr="logs/07b_sortvcf/all.{contig_group}.e"
+        stdout="logs/08_sortvcf/all.{contig_group}.o",
+        stderr="logs/08_sortvcf/all.{contig_group}.e"
     benchmark:
-        "benchmarks/07b_sortvcf/all.{contig_group}.txt"
+        "benchmarks/08_sortvcf/all.{contig_group}.txt"
     params:
         dictionary=config['ref']['dict'],
     envmodules:
@@ -612,18 +613,18 @@ rule sortVCF:
 
 rule merge_and_filter_vcf:
     input:
-        expand("analysis/variant_calling/07b_sortvcf/all.{contig_grp}.sort.vcf.gz", contig_grp=contig_grps.name)
+        expand("analysis/variant_calling/08_sortvcf/all.{contig_grp}.sort.vcf.gz", contig_grp=contig_grps.name)
     output:
-        raw="analysis/variant_calling/08_merge_and_filter/all.merged.vcf.gz",
-        filt="analysis/variant_calling/08_merge_and_filter/all.merged.filt.vcf.gz",
-        pass_only="analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz",
-        vt_peek_raw="analysis/variant_calling/08_merge_and_filter/all.merged.vcf.gz.vt_peek.txt",
-        vt_peek_pass="analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz.vt_peek.txt"
+        raw="analysis/variant_calling/09a_merge_and_filter/all.merged.vcf.gz",
+        filt="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.vcf.gz",
+        pass_only="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz",
+        vt_peek_raw="analysis/variant_calling/09a_merge_and_filter/all.merged.vcf.gz.vt_peek.txt",
+        vt_peek_pass="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz.vt_peek.txt"
     log:
-        stdout="logs/08_merge_and_filter/out.o",
-        stderr="logs/08_merge_and_filter/err.e"
+        stdout="logs/09a_merge_and_filter/out.o",
+        stderr="logs/09a_merge_and_filter/err.e"
     benchmark:
-        "benchmarks/08_merge_and_filter/benchmark.txt"
+        "benchmarks/09a_merge_and_filter/benchmark.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
         dictionary=config['ref']['dict'],
@@ -682,14 +683,14 @@ rule merge_and_filter_vcf:
 
 rule reheader_vcf:
     input:
-        vcf="analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz",
+        vcf="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz",
     output:
-        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
+        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
     log:
-        stdout="logs/08b_reheader_vcf/out.o",
-        stderr="logs/08b_reheader_vcf/err.e"
+        stdout="logs/09b_reheader_vcf/out.o",
+        stderr="logs/09b_reheader_vcf/err.e"
     benchmark:
-        "benchmarks/08b_reheader_vcf/bench.txt"
+        "benchmarks/09b_reheader_vcf/bench.txt"
     params:
         sample_decoder=config['sample_decoder']
     envmodules:
@@ -705,14 +706,14 @@ rule reheader_vcf:
 
 rule extract_ADs:
     input:
-        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
+        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
-        "analysis/variant_calling/08c_extract_ADs/all.merged.filt.PASS.reheader.AD.table"
+        "analysis/variant_calling/10c_extract_ADs/all.merged.filt.PASS.reheader.AD.table"
     log:
-        stdout="logs/08c_extract_ADs/out.o",
-        stderr="logs/08c_extract_ADs/err.e"
+        stdout="logs/10c_extract_ADs/out.o",
+        stderr="logs/10c_extract_ADs/err.e"
     benchmark:
-        "benchmarks/08c_extract_ADs/benchmark.txt"
+        "benchmarks/10c_extract_ADs/benchmark.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
         dictionary=config['ref']['dict'],
@@ -731,19 +732,19 @@ rule extract_ADs:
 
 rule variant_annot:
     input:
-        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
-        html="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff.html",
-        vcf="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz",
-        tbi="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz.tbi",
-        html_canon="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff_canonical.html",
-        vcf_canon="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz",
-        tbi_canon="analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz.tbi",
+        html="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff.html",
+        vcf="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz",
+        tbi="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz.tbi",
+        html_canon="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.html",
+        vcf_canon="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz",
+        tbi_canon="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz.tbi",
     log:
-        stdout="logs/09a_variant_annot/out.o",
-        stderr="logs/09a_variant_annot/out.e"
+        stdout="logs/10a_variant_annot/out.o",
+        stderr="logs/10a_variant_annot/out.e"
     benchmark:
-        "benchmarks/09a_variant_annot/benchmark.txt"
+        "benchmarks/10a_variant_annot/benchmark.txt"
     params:
         db_id=config["ref"]["snpeff_db_id"],
     envmodules:
@@ -780,16 +781,16 @@ rule variant_annot:
 
 rule snprelate:
     input:
-        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/08_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
-        "analysis/variant_calling/09b_snp_pca_and_dendro/report.html"
+        "analysis/variant_calling/10b_snp_pca_and_dendro/report.html"
     params:
-        gds="analysis/variant_calling/09b_snp_pca_and_dendro/all.gds",
-        figures_dir="analysis/variant_calling/09b_snp_pca_and_dendro/report_files/figure-html/",
-        new_figures_dir="analysis/variant_calling/09b_snp_pca_and_dendro/individual_figures/"
+        gds="analysis/variant_calling/10b_snp_pca_and_dendro/all.gds",
+        figures_dir="analysis/variant_calling/10b_snp_pca_and_dendro/report_files/figure-html/",
+        new_figures_dir="analysis/variant_calling/10b_snp_pca_and_dendro/individual_figures/"
     log:
-        stdout="logs/09b_snp_pca_and_dendro/out.o",
-        stderr="logs/09b_snp_pca_and_dendro/out.e"
+        stdout="logs/10b_snp_pca_and_dendro/out.o",
+        stderr="logs/10b_snp_pca_and_dendro/out.e"
     envmodules:
         "bbc/R/R-4.0.2-setR_LIBS_USER"
     threads: 1
