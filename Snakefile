@@ -55,7 +55,9 @@ rule all:
     input:
         expand("analysis/fastqc/{fq_pref}_fastqc.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
         expand("analysis/fastq_screen/{fq_pref}_screen.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
-        expand("analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html", sample = pd.unique(samples['sample']),
+        # Output counts matrix with well ID instead of cell barcode as column names if config['scrnaseq_tech']=='cellseq192'
+        expand("analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html", sample = pd.unique(samples['sample'])) if config['scrnaseq_tech']=='cellseq192' else expand("analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam", sample = pd.unique(samples['sample'])),
+        # Optional. Variant calling.
         ['analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
         'analysis/variant_calling/10b_snp_pca_and_dendro/report.html',
         'analysis/variant_calling/10c_extract_ADs/all.merged.filt.PASS.reheader.AD.table'] if config['call_variants'] else [] 
@@ -315,6 +317,9 @@ rule read_STARsolo_raw_counts:
 
 
 rule splitBAMByCB:
+    """
+    Split the STARSolo BAM by the CB (cell barcode) tag.
+    """
     input:
         "analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam"
     output:
@@ -338,6 +343,9 @@ rule splitBAMByCB:
         """
 
 rule append_CB_to_SM:
+    """
+    Make the SM tag unique to each cell by appending the CB tag.
+    """
     input:
         "analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.done"
     output:
@@ -363,6 +371,9 @@ rule append_CB_to_SM:
 # variant calling based on the GATK best practices as documented at https://github.com/gatk-workflows/gatk4-rnaseq-germline-snps-indels/blob/master/gatk4-rna-best-practices.wdl -- accessed Aug 11, 2020
 
 rule markdups:
+    """
+    Mark duplicates in each split CB BAM, using the UMI information (UB tag).
+    """
     input:
         "analysis/variant_calling/00b_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam" 
     output:
@@ -391,6 +402,9 @@ rule markdups:
         """
 
 rule splitncigar:
+    """
+    Adjust CIGAR strings to faciliatte RNA-seq variant calling.
+    """
     input:
         "analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"
     output:        
@@ -417,6 +431,9 @@ rule splitncigar:
         """
 
 rule base_recalibrate:
+    """
+    Recalibrate base quality scores using the known sites to pinpoint where true variants are likely to be.
+    """
     input:
         "analysis/variant_calling/02_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam"
     output:
@@ -445,6 +462,9 @@ rule base_recalibrate:
         """
 
 rule applyBQSR:
+    """
+    Apply BQSR.
+    """
     input:
         bam="analysis/variant_calling/02_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam",
         recal_table="analysis/variant_calling/03_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam.recal_data.table"
@@ -474,6 +494,9 @@ rule applyBQSR:
         """
 
 rule haplotypecaller:
+    """
+    Run haplotypecaller in GVCF mode for each cell barcode and each contig group.
+    """
     input:
         bam="analysis/variant_calling/04_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam"
     output:
@@ -529,6 +552,9 @@ def get_cb_files (wildcards):
     return cb_files
 
 rule combinevar:
+    """
+    Prepare genomicsdb file for each contig group to be used for joint genotyping.
+    """
     input:
         get_cb_files
     output:
@@ -557,6 +583,9 @@ rule combinevar:
         """
 
 rule jointgeno:
+    """
+    Joint genotyping on each contig group.
+    """
     input:
         "analysis/variant_calling/06_combinevar/{contig_group}.done"
     output:
@@ -585,6 +614,9 @@ rule jointgeno:
         """
 
 rule sortVCF:
+    """
+    Sort the output VCFs from joint genotyping. Merging errors out sometimes if we do not do this step.
+    """
     input:
         vcf="analysis/variant_calling/07_jointgeno/all.{contig_group}.vcf.gz",
     output:
@@ -612,6 +644,9 @@ rule sortVCF:
         """
 
 rule merge_and_filter_vcf:
+    """
+    Merge the contig group VCFs into one unified VCF, and do quality filters.
+    """
     input:
         expand("analysis/variant_calling/08_sortvcf/all.{contig_grp}.sort.vcf.gz", contig_grp=contig_grps.name)
     output:
@@ -682,6 +717,9 @@ rule merge_and_filter_vcf:
         """
 
 rule reheader_vcf:
+    """
+    Rename the samples names in the final VCF based on the decoder file specified in the config file.
+    """
     input:
         vcf="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz",
     output:
@@ -705,6 +743,9 @@ rule reheader_vcf:
         """
 
 rule extract_ADs:
+    """
+    Extract the AD for each genotype. Includes the chr, pos, ref, alt, type as the left-most columns.
+    """
     input:
         "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
@@ -731,6 +772,9 @@ rule extract_ADs:
         """
 
 rule variant_annot:
+    """
+    Annotate variants using SNPEff.
+    """
     input:
         "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
@@ -780,6 +824,9 @@ rule variant_annot:
         """
 
 rule snprelate:
+    """
+    Make PCA and dendrograms using SNPRelate.
+    """
     input:
         "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
