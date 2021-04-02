@@ -314,12 +314,12 @@ rule read_STARsolo_raw_counts:
         "scripts/read_star_solo_raw.Rmd"
 
 
-checkpoint splitBAMByCB:
+rule splitBAMByCB:
     input:
         "analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam"
     output:
         done=touch("analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.done"),
-        outdir=directory("analysis/variant_calling/00_splitBAMByCB/{sample}/")
+        outdir=directory("analysis/variant_calling/00_splitBAMByCB/{sample, [^\/]+}/")
     log:
         stdout="logs/splitBAMByCB/{sample}.o",
         stderr="logs/splitBAMByCB/{sample}.e"
@@ -339,10 +339,11 @@ checkpoint splitBAMByCB:
 
 rule append_CB_to_SM:
     input:
-        "analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.TAG_CB_{CB}.bam" 
+        "analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.done"
     output:
         bam=temp("analysis/variant_calling/00b_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam"),
     params: 
+        input="analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.TAG_CB_{CB}.bam"
     log:
         stdout="logs/00b_append_CB_to_SM/{sample}/{CB}.o",
         stderr="logs/00b_append_CB_to_SM/{sample}/{CB}.e"
@@ -355,7 +356,7 @@ rule append_CB_to_SM:
         mem_gb = 64
     shell:
         """
-        samtools reheader -c 'perl -pe "s/^(@SQ.*)(\\tSM:\S+)/\$1\$2.{wildcards.CB}/"' {input} 1> {output} 2> {log.stderr}
+        samtools reheader -c 'perl -pe "s/^(@SQ.*)(\\tSM:\S+)/\$1\$2.{wildcards.CB}/"' {params.input} 1> {output} 2> {log.stderr}
         """
 
 
@@ -509,16 +510,15 @@ def get_cb_files (wildcards):
     cb_files = []
     for sample in np.unique(samples['sample'].values):
         CBs_to_use = []
-
+        barcodes = ''
         if call_variant_filtered_cells_only:
             # Use only the filtered cells
-            starsolo_filtered_cells = checkpoints.STARsolo.get(sample=sample).output['filtered'][1]
-            CBs_to_use = pd.read_table(starsolo_filtered_cells, names=['barcode'])['barcode'].tolist()
+            barcodes = checkpoints.STARsolo.get(sample=sample).output['filtered'][1]
         else:
-            # Use all the BAM files that come out of the BAM splitting step
-            split_bams_dir = checkpoints.splitBAMByCB.get(sample=sample).output['outdir']
-            CBs_to_use = glob_wildcards(os.path.join(split_bams_dir, sample + ".TAG_CB_{CB, [^-]+}.bam")).CB
-        
+            # Use the raw barcodes
+            barcodes = checkpoints.STARsolo.get(sample=sample).output['raw'][1]
+            
+        CBs_to_use = pd.read_table(barcodes, names=['barcode'])['barcode'].tolist()
         cb_files = cb_files + expand("analysis/variant_calling/05_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz",
             sample=sample,
             CB=CBs_to_use,
