@@ -12,7 +12,7 @@ Set up to process 'indrop_v2', '10x_v1', '10x_v2', '10x_v3' or 'cellseq192'.
 
 3. Fill out 'bin/config.yaml' to indicate the location of index files, the scRNA-seq technology etc. See config file comments for more details. 
 
-   For variant calling, set 'call_variants' to True. To variant call only a subset of the cell barcodes, specify only those barcodes in the 'sample_decoder' file. See config file for more info. 
+   **For variant calling**, set 'call_variants' to True. **To variant call only a subset of the cell barcodes**, specify only those barcodes in the 'sample_decoder' file. See config file for more info.
 
 4. Run `qsub -q bbc bin/run_snakemake.sh`.
 
