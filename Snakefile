@@ -500,7 +500,7 @@ rule haplotypecaller:
     input:
         bam="analysis/variant_calling/04_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam"
     output:
-        "analysis/variant_calling/05_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz"
+        temp("analysis/variant_calling/05_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz")
     log:
         stdout="logs/05_haplotypecaller/{sample}/{CB}.{contig_group}.o",
         stderr="logs/05_haplotypecaller/{sample}/{CB}.{contig_group}.e"
@@ -559,7 +559,7 @@ rule combinevar:
         get_cb_files
     output:
         touch=touch("analysis/variant_calling/06_combinevar/{contig_group}.done"),
-        genomicsdb=directory("analysis/variant_calling/06_combinevar/{contig_group}.genomicsdb"),
+        genomicsdb=temp(directory("analysis/variant_calling/06_combinevar/{contig_group}.genomicsdb")),
     log:
         stdout="logs/06_combinevar/all.{contig_group}.o",
         stderr="logs/06_combinevar/all.{contig_group}.e"
