@@ -25,3 +25,19 @@ call_variants: True
 # Note that the 'old name' will be 'samplename.cellbarcode', where sample name comes from the 'sample' column in the samples.tsv
 # You may leave this blank if no renaming is needed
 sample_decoder: "vcf_reheader.tsv"
+
+# Packages
+
+bamtools: "bbc/bamtools/bamtools-2.5.1"
+bcftools: "bbc/bcftools/bcftools-1.12"
+fastqc: "bbc/fastqc/fastqc-0.11.9"
+fastq_screen: "bbc/fastq_screen/fastq_screen-0.14.0"
+gatk: "bbc/gatk/gatk-4.1.8.1"
+htslib: "bbc/htslib/htslib-1.10.2"
+picard: "bbc/picard/picard-2.23.3"
+pigz: "bbc/pigz/pigz-2.4"
+R: "bbc/R/R-4.0.2-setR_LIBS_USER"
+samtools: "bbc/samtools/samtools-1.12"
+SnpEff: "bbc/SnpEff/SnpEff-4.3t"
+STAR: "bbc/STAR/STAR-2.7.8a"
+vt: "bbc/vt/vt-0.1.16"
