@@ -564,7 +564,7 @@ rule combinevar:
         get_cb_files
     output:
         touch=touch("analysis/variant_calling/07_combinevar/{contig_group}.done"),
-        genomicsdb=temp(directory("analysis/variant_calling/07_combinevar/{contig_group}.genomicsdb")),
+        genomicsdb=directory("analysis/variant_calling/07_combinevar/{contig_group}.genomicsdb"),
     log:
         stdout="logs/07_combinevar/all.{contig_group}.o",
         stderr="logs/07_combinevar/all.{contig_group}.e"
