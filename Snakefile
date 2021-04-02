@@ -58,9 +58,9 @@ rule all:
         # Output counts matrix with well ID instead of cell barcode as column names if config['scrnaseq_tech']=='cellseq192'
         expand("analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html", sample = pd.unique(samples['sample'])) if config['scrnaseq_tech']=='cellseq192' else expand("analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam", sample = pd.unique(samples['sample'])),
         # Optional. Variant calling.
-        ['analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
-        'analysis/variant_calling/10b_snp_pca_and_dendro/report.html',
-        'analysis/variant_calling/10c_extract_ADs/all.merged.filt.PASS.reheader.AD.table'] if config['call_variants'] else [] 
+        ['analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
+        'analysis/variant_calling/11b_snp_pca_and_dendro/report.html',
+        'analysis/variant_calling/11c_extract_ADs/all.merged.filt.PASS.reheader.AD.table'] if config['call_variants'] else [] 
 
 rule fastqc:
     """
@@ -326,10 +326,10 @@ rule splitBAMByCB:
         done=touch("analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.done"),
         outdir=directory("analysis/variant_calling/00_splitBAMByCB/{sample, [^\/]+}/")
     log:
-        stdout="logs/splitBAMByCB/{sample}.o",
-        stderr="logs/splitBAMByCB/{sample}.e"
+        stdout="logs/00_splitBAMByCB/{sample}.o",
+        stderr="logs/00_splitBAMByCB/{sample}.e"
     benchmark:
-        "benchmarks/splitBAMByCB/{sample}.txt"
+        "benchmarks/00_splitBAMByCB/{sample}.txt"
     envmodules:
         config["bamtools"]
     params:
@@ -349,14 +349,14 @@ rule append_CB_to_SM:
     input:
         "analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.done"
     output:
-        bam=temp("analysis/variant_calling/00b_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam"),
+        bam=temp("analysis/variant_calling/01_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam"),
     params: 
         input="analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.TAG_CB_{CB}.bam"
     log:
-        stdout="logs/00b_append_CB_to_SM/{sample}/{CB}.o",
-        stderr="logs/00b_append_CB_to_SM/{sample}/{CB}.e"
+        stdout="logs/01_append_CB_to_SM/{sample}/{CB}.o",
+        stderr="logs/01_append_CB_to_SM/{sample}/{CB}.e"
     benchmark:
-        "benchmarks/00b_append_CB_to_SM/{sample}/{CB}.txt"
+        "benchmarks/01_append_CB_to_SM/{sample}/{CB}.txt"
     envmodules:
         config["samtools"]
     threads: 4
@@ -375,16 +375,16 @@ rule markdups:
     Mark duplicates in each split CB BAM, using the UMI information (UB tag).
     """
     input:
-        "analysis/variant_calling/00b_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam" 
+        "analysis/variant_calling/01_append_CB_to_SM/{sample}/{sample}.TAG_CB_{CB}.bam" 
     output:
-        bam=temp("analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"),
-        metrics="analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.metrics"
+        bam=temp("analysis/variant_calling/02_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"),
+        metrics="analysis/variant_calling/02_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.metrics"
     params: 
     log:
-        stdout="logs/01_markdup/{sample}/{CB}.o",
-        stderr="logs/01_markdup/{sample}/{CB}.e"
+        stdout="logs/02_markdup/{sample}/{CB}.o",
+        stderr="logs/02_markdup/{sample}/{CB}.e"
     benchmark:
-        "benchmarks/01_markdup/{sample}/{CB}.txt"
+        "benchmarks/02_markdup/{sample}/{CB}.txt"
     envmodules:
         config["picard"]
     threads: 4
@@ -406,16 +406,16 @@ rule splitncigar:
     Adjust CIGAR strings to faciliatte RNA-seq variant calling.
     """
     input:
-        "analysis/variant_calling/01_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"
+        "analysis/variant_calling/02_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"
     output:        
-        temp("analysis/variant_calling/02_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam")
+        temp("analysis/variant_calling/03_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam")
     params:
         ref_fasta=config["ref"]["sequence"],
     log:
-        stdout="logs/02_splitncigar/{sample}/{CB}.o",
-        stderr="logs/02_splitncigar/{sample}/{CB}.e"
+        stdout="logs/03_splitncigar/{sample}/{CB}.o",
+        stderr="logs/03_splitncigar/{sample}/{CB}.e"
     benchmark:
-        "benchmarks/02_splitncigar/{sample}/{CB}.txt"
+        "benchmarks/03_splitncigar/{sample}/{CB}.txt"
     envmodules:
         config["gatk"]
     threads: 4
@@ -435,14 +435,14 @@ rule base_recalibrate:
     Recalibrate base quality scores using the known sites to pinpoint where true variants are likely to be.
     """
     input:
-        "analysis/variant_calling/02_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam"
+        "analysis/variant_calling/03_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam"
     output:
-        "analysis/variant_calling/03_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam.recal_data.table"
+        "analysis/variant_calling/04_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam.recal_data.table"
     log:
-        stdout="logs/03_base_recal/{sample}/{CB}.o",
-        stderr="logs/03_base_recal/{sample}/{CB}.e"
+        stdout="logs/04_base_recal/{sample}/{CB}.o",
+        stderr="logs/04_base_recal/{sample}/{CB}.e"
     benchmark:
-        "benchmarks/03_base_recal/{sample}/{CB}.txt"
+        "benchmarks/04_base_recal/{sample}/{CB}.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
         known_variants=' '.join(['-known-sites ' + s for s in config["ref"]["known_variants"].split(',')]),
@@ -466,15 +466,15 @@ rule applyBQSR:
     Apply BQSR.
     """
     input:
-        bam="analysis/variant_calling/02_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam",
-        recal_table="analysis/variant_calling/03_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam.recal_data.table"
+        bam="analysis/variant_calling/03_splitncigar/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam",
+        recal_table="analysis/variant_calling/04_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam.recal_data.table"
     output:
-        "analysis/variant_calling/04_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam",
+        "analysis/variant_calling/05_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam",
     log:
-        stdout="logs/04_apply_base_recal/{sample}/{CB}.o",
-        stderr="logs/04_apply_base_recal/{sample}/{CB}.e"
+        stdout="logs/05_apply_base_recal/{sample}/{CB}.o",
+        stderr="logs/05_apply_base_recal/{sample}/{CB}.e"
     benchmark:
-        "benchmarks/04_apply_base_recal/{sample}/{CB}.txt"
+        "benchmarks/05_apply_base_recal/{sample}/{CB}.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
     envmodules:
@@ -498,14 +498,14 @@ rule haplotypecaller:
     Run haplotypecaller in GVCF mode for each cell barcode and each contig group.
     """
     input:
-        bam="analysis/variant_calling/04_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam"
+        bam="analysis/variant_calling/05_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam"
     output:
-        temp("analysis/variant_calling/05_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz")
+        temp("analysis/variant_calling/06_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz")
     log:
-        stdout="logs/05_haplotypecaller/{sample}/{CB}.{contig_group}.o",
-        stderr="logs/05_haplotypecaller/{sample}/{CB}.{contig_group}.e"
+        stdout="logs/06_haplotypecaller/{sample}/{CB}.{contig_group}.o",
+        stderr="logs/06_haplotypecaller/{sample}/{CB}.{contig_group}.e"
     benchmark:
-        "benchmarks/05_haplotypecaller/{sample}/{CB}.{contig_group}.txt"
+        "benchmarks/06_haplotypecaller/{sample}/{CB}.{contig_group}.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
         contigs = lambda wildcards: ' '.join(['-L ' + contig for contig in contig_grps[contig_grps.name == wildcards.contig_group]['contigs'].values[0].split(',')]),
@@ -545,7 +545,7 @@ def get_cb_files (wildcards):
         CBs_to_use = pd.read_table(barcodes, names=['barcode'])['barcode'].tolist()
 
         # hapotypecaller files needed
-        cb_files = cb_files + expand("analysis/variant_calling/05_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz",
+        cb_files = cb_files + expand("analysis/variant_calling/06_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz",
             sample=sample,
             CB=CBs_to_use,
             contig_group=wildcards.contig_group)
@@ -558,13 +558,13 @@ rule combinevar:
     input:
         get_cb_files
     output:
-        touch=touch("analysis/variant_calling/06_combinevar/{contig_group}.done"),
-        genomicsdb=temp(directory("analysis/variant_calling/06_combinevar/{contig_group}.genomicsdb")),
+        touch=touch("analysis/variant_calling/07_combinevar/{contig_group}.done"),
+        genomicsdb=temp(directory("analysis/variant_calling/07_combinevar/{contig_group}.genomicsdb")),
     log:
-        stdout="logs/06_combinevar/all.{contig_group}.o",
-        stderr="logs/06_combinevar/all.{contig_group}.e"
+        stdout="logs/07_combinevar/all.{contig_group}.o",
+        stderr="logs/07_combinevar/all.{contig_group}.e"
     benchmark:
-        "benchmarks/06_combinevar/{contig_group}.txt"
+        "benchmarks/07_combinevar/{contig_group}.txt"
     params:
         sample_gvcfs = lambda wildcards, input: list(map("-V {}".format, input)),
         contigs = lambda wildcards: ' '.join(['-L ' + contig for contig in contig_grps[contig_grps.name == wildcards.contig_group]['contigs'].values[0].split(',')]),
@@ -587,17 +587,17 @@ rule jointgeno:
     Joint genotyping on each contig group.
     """
     input:
-        "analysis/variant_calling/06_combinevar/{contig_group}.done"
+        "analysis/variant_calling/07_combinevar/{contig_group}.done"
     output:
-        vcf="analysis/variant_calling/07_jointgeno/all.{contig_group}.vcf.gz",
+        vcf="analysis/variant_calling/08_jointgeno/all.{contig_group}.vcf.gz",
     log:
-        stdout="logs/07_jointgeno/all.{contig_group}.o",
-        stderr="logs/07_jointgeno/all.{contig_group}.e"
+        stdout="logs/08_jointgeno/all.{contig_group}.o",
+        stderr="logs/08_jointgeno/all.{contig_group}.e"
     benchmark:
-        "benchmarks/07_jointgeno/all.{contig_group}.txt"
+        "benchmarks/08_jointgeno/all.{contig_group}.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
-        genomicsdb="analysis/variant_calling/06_combinevar/{contig_group}.genomicsdb"
+        genomicsdb="analysis/variant_calling/07_combinevar/{contig_group}.genomicsdb"
     envmodules:
         config["gatk"]
     threads: 4
@@ -618,14 +618,14 @@ rule sortVCF:
     Sort the output VCFs from joint genotyping. Merging errors out sometimes if we do not do this step.
     """
     input:
-        vcf="analysis/variant_calling/07_jointgeno/all.{contig_group}.vcf.gz",
+        vcf="analysis/variant_calling/08_jointgeno/all.{contig_group}.vcf.gz",
     output:
-        sorted_vcf="analysis/variant_calling/08_sortvcf/all.{contig_group}.sort.vcf.gz"
+        sorted_vcf="analysis/variant_calling/09_sortvcf/all.{contig_group}.sort.vcf.gz"
     log:
-        stdout="logs/08_sortvcf/all.{contig_group}.o",
-        stderr="logs/08_sortvcf/all.{contig_group}.e"
+        stdout="logs/09_sortvcf/all.{contig_group}.o",
+        stderr="logs/09_sortvcf/all.{contig_group}.e"
     benchmark:
-        "benchmarks/08_sortvcf/all.{contig_group}.txt"
+        "benchmarks/09_sortvcf/all.{contig_group}.txt"
     params:
         dictionary=config['ref']['dict'],
     envmodules:
@@ -648,18 +648,18 @@ rule merge_and_filter_vcf:
     Merge the contig group VCFs into one unified VCF, and do quality filters.
     """
     input:
-        expand("analysis/variant_calling/08_sortvcf/all.{contig_grp}.sort.vcf.gz", contig_grp=contig_grps.name)
+        expand("analysis/variant_calling/09_sortvcf/all.{contig_grp}.sort.vcf.gz", contig_grp=contig_grps.name)
     output:
-        raw="analysis/variant_calling/09a_merge_and_filter/all.merged.vcf.gz",
-        filt="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.vcf.gz",
-        pass_only="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz",
-        vt_peek_raw="analysis/variant_calling/09a_merge_and_filter/all.merged.vcf.gz.vt_peek.txt",
-        vt_peek_pass="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz.vt_peek.txt"
+        raw="analysis/variant_calling/10a_merge_and_filter/all.merged.vcf.gz",
+        filt="analysis/variant_calling/10a_merge_and_filter/all.merged.filt.vcf.gz",
+        pass_only="analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz",
+        vt_peek_raw="analysis/variant_calling/10a_merge_and_filter/all.merged.vcf.gz.vt_peek.txt",
+        vt_peek_pass="analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz.vt_peek.txt"
     log:
-        stdout="logs/09a_merge_and_filter/out.o",
-        stderr="logs/09a_merge_and_filter/err.e"
+        stdout="logs/10a_merge_and_filter/out.o",
+        stderr="logs/10a_merge_and_filter/err.e"
     benchmark:
-        "benchmarks/09a_merge_and_filter/benchmark.txt"
+        "benchmarks/10a_merge_and_filter/benchmark.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
         dictionary=config['ref']['dict'],
@@ -721,14 +721,14 @@ rule reheader_vcf:
     Rename the samples names in the final VCF based on the decoder file specified in the config file.
     """
     input:
-        vcf="analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz",
+        vcf="analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz",
     output:
-        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
+        "analysis/variant_calling/10b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
     log:
-        stdout="logs/09b_reheader_vcf/out.o",
-        stderr="logs/09b_reheader_vcf/err.e"
+        stdout="logs/10b_reheader_vcf/out.o",
+        stderr="logs/10b_reheader_vcf/err.e"
     benchmark:
-        "benchmarks/09b_reheader_vcf/bench.txt"
+        "benchmarks/10b_reheader_vcf/bench.txt"
     params:
         sample_decoder=config['sample_decoder']
     envmodules:
@@ -747,14 +747,14 @@ rule extract_ADs:
     Extract the AD for each genotype. Includes the chr, pos, ref, alt, type as the left-most columns.
     """
     input:
-        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/10b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
-        "analysis/variant_calling/10c_extract_ADs/all.merged.filt.PASS.reheader.AD.table"
+        "analysis/variant_calling/11c_extract_ADs/all.merged.filt.PASS.reheader.AD.table"
     log:
-        stdout="logs/10c_extract_ADs/out.o",
-        stderr="logs/10c_extract_ADs/err.e"
+        stdout="logs/11c_extract_ADs/out.o",
+        stderr="logs/11c_extract_ADs/err.e"
     benchmark:
-        "benchmarks/10c_extract_ADs/benchmark.txt"
+        "benchmarks/11c_extract_ADs/benchmark.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
         dictionary=config['ref']['dict'],
@@ -776,19 +776,19 @@ rule variant_annot:
     Annotate variants using SNPEff.
     """
     input:
-        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/10b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
-        html="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff.html",
-        vcf="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz",
-        tbi="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz.tbi",
-        html_canon="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.html",
-        vcf_canon="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz",
-        tbi_canon="analysis/variant_calling/10a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz.tbi",
+        html="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff.html",
+        vcf="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz",
+        tbi="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff.vcf.gz.tbi",
+        html_canon="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.html",
+        vcf_canon="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz",
+        tbi_canon="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz.tbi",
     log:
-        stdout="logs/10a_variant_annot/out.o",
-        stderr="logs/10a_variant_annot/out.e"
+        stdout="logs/11a_variant_annot/out.o",
+        stderr="logs/11a_variant_annot/out.e"
     benchmark:
-        "benchmarks/10a_variant_annot/benchmark.txt"
+        "benchmarks/11a_variant_annot/benchmark.txt"
     params:
         db_id=config["ref"]["snpeff_db_id"],
     envmodules:
@@ -828,16 +828,16 @@ rule snprelate:
     Make PCA and dendrograms using SNPRelate.
     """
     input:
-        "analysis/variant_calling/09b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/09a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/10b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
-        "analysis/variant_calling/10b_snp_pca_and_dendro/report.html"
+        "analysis/variant_calling/11b_snp_pca_and_dendro/report.html"
     params:
-        gds="analysis/variant_calling/10b_snp_pca_and_dendro/all.gds",
-        figures_dir="analysis/variant_calling/10b_snp_pca_and_dendro/report_files/figure-html/",
-        new_figures_dir="analysis/variant_calling/10b_snp_pca_and_dendro/individual_figures/"
+        gds="analysis/variant_calling/11b_snp_pca_and_dendro/all.gds",
+        figures_dir="analysis/variant_calling/11b_snp_pca_and_dendro/report_files/figure-html/",
+        new_figures_dir="analysis/variant_calling/11b_snp_pca_and_dendro/individual_figures/"
     log:
-        stdout="logs/10b_snp_pca_and_dendro/out.o",
-        stderr="logs/10b_snp_pca_and_dendro/out.e"
+        stdout="logs/11b_snp_pca_and_dendro/out.o",
+        stderr="logs/11b_snp_pca_and_dendro/out.e"
     envmodules:
         config["R"]
     threads: 1
