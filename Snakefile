@@ -79,7 +79,7 @@ rule fastqc:
     benchmark:
         "benchmarks/fastqc/{fq_pref}.txt"
     envmodules:
-        "bbc/fastqc/fastqc-0.11.9"
+        config["fastqc"]
     threads: 1
     resources:
         mem_gb = 32
@@ -104,7 +104,7 @@ rule fastq_screen:
     benchmark:
         "benchmarks/fastq_screen/{fq_pref}.txt"
     envmodules:
-        "bbc/fastq_screen/fastq_screen-0.14.0"
+        config["fastq_screen"]
     threads: 8
     resources:
         mem_gb = 32
@@ -250,9 +250,9 @@ checkpoint STARsolo:
     benchmark:
         "benchmarks/STARSolo/{sample}.txt"
     envmodules:
-        "bbc/STAR/STAR-2.7.8a",
-        "bbc/samtools/samtools-1.9",
-        "bbc/pigz/pigz-2.4"
+        config["STAR"],
+        config["samtools"],
+        config["pigz"]
     shell:
        """
        STAR  \
@@ -308,7 +308,7 @@ rule read_STARsolo_raw_counts:
     params:
         decoder="whitelists/cellseq192/celseq_barcodes.192.txt"
     envmodules:
-        "bbc/R/R-4.0.2-setR_LIBS_USER"
+        config["R"]
     threads: 1
     resources:
         mem_gb = 20
@@ -331,7 +331,7 @@ rule splitBAMByCB:
     benchmark:
         "benchmarks/splitBAMByCB/{sample}.txt"
     envmodules:
-        "bbc/bamtools/bamtools-2.5.1"
+        config["bamtools"]
     params:
         out_pref=lambda wildcards, input: "analysis/variant_calling/00_splitBAMByCB/" + wildcards.sample + "/" + wildcards.sample
     threads: 4
@@ -358,7 +358,7 @@ rule append_CB_to_SM:
     benchmark:
         "benchmarks/00b_append_CB_to_SM/{sample}/{CB}.txt"
     envmodules:
-        "bbc/samtools/samtools-1.12"
+        config["samtools"]
     threads: 4
     resources: 
         mem_gb = 64
@@ -386,7 +386,7 @@ rule markdups:
     benchmark:
         "benchmarks/01_markdup/{sample}/{CB}.txt"
     envmodules:
-        "bbc/picard/picard-2.23.3"
+        config["picard"]
     threads: 4
     resources: 
         mem_gb = 64
@@ -417,7 +417,7 @@ rule splitncigar:
     benchmark:
         "benchmarks/02_splitncigar/{sample}/{CB}.txt"
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1"
+        config["gatk"]
     threads: 4
     resources: 
         mem_gb = 64
@@ -447,7 +447,7 @@ rule base_recalibrate:
         ref_fasta=config["ref"]["sequence"],
         known_variants=' '.join(['-known-sites ' + s for s in config["ref"]["known_variants"].split(',')]),
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1"
+        config["gatk"]
     threads: 4
     resources: 
         mem_gb = 64
@@ -478,7 +478,7 @@ rule applyBQSR:
     params:
         ref_fasta=config["ref"]["sequence"],
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1"
+        config["gatk"]
     threads: 4
     resources: 
         mem_gb = 64
@@ -511,7 +511,7 @@ rule haplotypecaller:
         contigs = lambda wildcards: ' '.join(['-L ' + contig for contig in contig_grps[contig_grps.name == wildcards.contig_group]['contigs'].values[0].split(',')]),
         
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1"
+        config["gatk"]
     threads: 4
     resources: 
         mem_gb = 80
@@ -569,7 +569,7 @@ rule combinevar:
         sample_gvcfs = lambda wildcards, input: list(map("-V {}".format, input)),
         contigs = lambda wildcards: ' '.join(['-L ' + contig for contig in contig_grps[contig_grps.name == wildcards.contig_group]['contigs'].values[0].split(',')]),
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1"
+        config["gatk"]
     threads: 4
     resources: 
         mem_gb = 80
@@ -599,7 +599,7 @@ rule jointgeno:
         ref_fasta=config["ref"]["sequence"],
         genomicsdb="analysis/variant_calling/06_combinevar/{contig_group}.genomicsdb"
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1"
+        config["gatk"]
     threads: 4
     resources: 
         mem_gb = 80
@@ -629,7 +629,7 @@ rule sortVCF:
     params:
         dictionary=config['ref']['dict'],
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1"
+        config["gatk"]
     threads: 4
     resources: 
         mem_gb = 80
@@ -665,8 +665,8 @@ rule merge_and_filter_vcf:
         dictionary=config['ref']['dict'],
         in_vcfs = lambda wildcards, input: ' '.join(['--INPUT ' + vcf for vcf in input]) 
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1",
-        "bbc/vt/vt-0.1.16"
+        config["gatk"],
+        config["vt"]
     threads: 4
     resources: 
         mem_gb = 80
@@ -732,7 +732,7 @@ rule reheader_vcf:
     params:
         sample_decoder=config['sample_decoder']
     envmodules:
-        "bbc/bcftools/bcftools-1.12"
+        config["bcftools"]
     threads: 4
     resources: 
         mem_gb = 80
@@ -759,7 +759,7 @@ rule extract_ADs:
         ref_fasta=config["ref"]["sequence"],
         dictionary=config['ref']['dict'],
     envmodules:
-        "bbc/gatk/gatk-4.1.8.1",
+        config["gatk"],
     threads: 4
     resources: 
         mem_gb = 80
@@ -792,8 +792,8 @@ rule variant_annot:
     params:
         db_id=config["ref"]["snpeff_db_id"],
     envmodules:
-        "bbc/SnpEff/SnpEff-4.3t",
-        "bbc/htslib/htslib-1.10.2"
+        config["SnpEff"],
+        config["htslib"]
     threads: 4
     resources: 
         mem_gb = 80
@@ -839,7 +839,7 @@ rule snprelate:
         stdout="logs/10b_snp_pca_and_dendro/out.o",
         stderr="logs/10b_snp_pca_and_dendro/out.e"
     envmodules:
-        "bbc/R/R-4.0.2-setR_LIBS_USER"
+        config["R"]
     threads: 1
     resources:
         mem_gb = 60
