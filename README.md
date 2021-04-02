@@ -1,6 +1,6 @@
 # scRNAseq workflow
 
-Set up to process 'indrop_v2', '10x_v1', '10x_v2', '10x_v3' or 'cellseq192'. 
+This workflow runs STARsolo with the appropriate parameters for the particular scRNA-seq technology. Currently, 'indrop_v2', '10x_v1', '10x_v2', '10x_v3' and 'cellseq192' are supported. Optionally, variants can be called suing the GATK RNA-seq workflow. Duplicates are identified using the UB tag for each cell barcode separately. Final variants are hard-filtered, annotated with SNPEff and passed through the R package, SNPRelate, for PCA, MDS and dendrograms. 
 
 # How to use
 1. Put fastq files or symlinks into 'raw_data/'.
