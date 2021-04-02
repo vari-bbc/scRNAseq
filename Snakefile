@@ -55,7 +55,7 @@ rule all:
     input:
         expand("analysis/fastqc/{fq_pref}_fastqc.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
         expand("analysis/fastq_screen/{fq_pref}_screen.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
-        # Output counts matrix with well ID instead of cell barcode as column names if config['scrnaseq_tech']=='cellseq192'
+        # Output counts matrix with barcode ID instead of cell barcode as column names if config['scrnaseq_tech']=='cellseq192'
         expand("analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html", sample = pd.unique(samples['sample'])) if config['scrnaseq_tech']=='cellseq192' else expand("analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam", sample = pd.unique(samples['sample'])),
         # Optional. Variant calling.
         ['analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
@@ -543,6 +543,11 @@ def get_cb_files (wildcards):
             
         # CBs from filtered cells
         CBs_to_use = pd.read_table(barcodes, names=['barcode'])['barcode'].tolist()
+
+        # CBs from filtered cells that were also requested based on the decoder file specified in the config file
+        if config['sample_decoder']:
+            CBs_to_keep = pd.read_table(config['sample_decoder'], names=['old_name','new_name'])['old_name'].tolist()
+            CBs_to_use = [CB for CB in CBs_to_use if (sample + '.' + CB) in CBs_to_keep]
 
         # hapotypecaller files needed
         cb_files = cb_files + expand("analysis/variant_calling/06_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz",
