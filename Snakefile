@@ -55,10 +55,9 @@ rule all:
     input:
         expand("analysis/fastqc/{fq_pref}_fastqc.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
         expand("analysis/fastq_screen/{fq_pref}_screen.html", fq_pref=(samples['fq1'].str.replace('.fastq.gz','').tolist() + samples['fq2'].str.replace('.fastq.gz','').tolist())),
-        #expand("analysis/STARsolo/{sample}.Aligned.sortedByCoord.out.bam", sample=np.unique(samples["sample"].values)),
-        #expand("analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html", sample=np.unique(samples["sample"].values)) if config['scrnaseq_tech'] == 'cellseq192' else [],
-        "analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz",
-        "analysis/variant_calling/09b_snp_pca_and_dendro/report.html",
+        'analysis/variant_calling/09a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
+        'analysis/variant_calling/09b_snp_pca_and_dendro/report.html',
+        'analysis/variant_calling/08c_extract_ADs/all.merged.filt.PASS.reheader.AD.table'
 
 rule fastqc:
     """
@@ -518,7 +517,10 @@ def get_cb_files (wildcards):
             # Use the raw barcodes
             barcodes = checkpoints.STARsolo.get(sample=sample).output['raw'][1]
             
+        # CBs from filtered cells
         CBs_to_use = pd.read_table(barcodes, names=['barcode'])['barcode'].tolist()
+
+        # hapotypecaller files needed
         cb_files = cb_files + expand("analysis/variant_calling/05_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz",
             sample=sample,
             CB=CBs_to_use,
@@ -701,6 +703,31 @@ rule reheader_vcf:
         bcftools index --threads {threads} -t {output}
         """
 
+rule extract_ADs:
+    input:
+        "analysis/variant_calling/08b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
+    output:
+        "analysis/variant_calling/08c_extract_ADs/all.merged.filt.PASS.reheader.AD.table"
+    log:
+        stdout="logs/08c_extract_ADs/out.o",
+        stderr="logs/08c_extract_ADs/err.e"
+    benchmark:
+        "benchmarks/08c_extract_ADs/benchmark.txt"
+    params:
+        ref_fasta=config["ref"]["sequence"],
+        dictionary=config['ref']['dict'],
+    envmodules:
+        "bbc/gatk/gatk-4.1.8.1",
+    threads: 4
+    resources: 
+        mem_gb = 80
+
+    shell:
+        """
+        gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" VariantsToTable -V {input} \
+                -R {params.ref_fasta} --sequence-dictionary {params.dictionary} \
+                -F CHROM -F POS -F REF -F ALT -F TYPE -GF AD -O {output}
+        """
 
 rule variant_annot:
     input:
