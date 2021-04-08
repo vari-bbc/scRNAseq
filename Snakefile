@@ -807,7 +807,6 @@ rule variant_annot:
         java -Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp -jar $SNPEFF/snpEff.jar eff \
         -v \
         -canon \
-        -onlyProtein \
         -stats {output.html_canon} \
         {params.db_id} \
         {input} \
@@ -818,7 +817,6 @@ rule variant_annot:
 
         java -Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp -jar $SNPEFF/snpEff.jar eff \
         -v \
-        -onlyProtein \
         -stats {output.html} \
         {params.db_id} \
         {input} \
