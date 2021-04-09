@@ -60,7 +60,7 @@ rule all:
         # Optional. Variant calling.
         ['analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
         'analysis/variant_calling/11b_snp_pca_and_dendro/report.html',
-        'analysis/variant_calling/11c_extract_ADs/all.merged.filt.PASS.reheader.AD.table'] if config['call_variants'] else [] 
+        'analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.parsed.table'] if config['call_variants'] else [] 
 
 rule fastqc:
     """
@@ -752,14 +752,16 @@ rule extract_ADs:
     Extract the AD for each genotype. Includes the chr, pos, ref, alt, type as the left-most columns.
     """
     input:
-        "analysis/variant_calling/10b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
+        "analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_inGene.vcf.gz"
+        #"analysis/variant_calling/10b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz" if config['sample_decoder'] else "analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz"
     output:
-        "analysis/variant_calling/11c_extract_ADs/all.merged.filt.PASS.reheader.AD.table"
+        raw="analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.table",
+        parsed="analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.parsed.table",
     log:
-        stdout="logs/11c_extract_ADs/out.o",
-        stderr="logs/11c_extract_ADs/err.e"
+        stdout="logs/11a2_extract_ADs/out.o",
+        stderr="logs/11a2_extract_ADs/err.e"
     benchmark:
-        "benchmarks/11c_extract_ADs/benchmark.txt"
+        "benchmarks/11a2_extract_ADs/benchmark.txt"
     params:
         ref_fasta=config["ref"]["sequence"],
         dictionary=config['ref']['dict'],
@@ -773,7 +775,11 @@ rule extract_ADs:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" VariantsToTable -V {input} \
                 -R {params.ref_fasta} --sequence-dictionary {params.dictionary} \
-                -F CHROM -F POS -F REF -F ALT -F TYPE -GF AD -O {output}
+                -F CHROM -F POS -F REF -F ALT -F TYPE -F ANN -GF AD -O {output.raw}
+
+        head -n1 {output.raw} | perl -npe 's/\\tANN\\t/\\tGENE\\t/; s/\.AD(?=[\t\n])//g' > {output.parsed}
+
+        tail -n+2 {output.raw} | perl -F'\\t' -lane 'my %hash; $hash{{join("|",(split(/\|/,$_))[3..4])}}++ foreach split(",", $F[5]); $F[5] = join(",", sort(keys(%hash))); print join("\\t", @F)' >> {output.parsed}
         """
 
 rule variant_annot:
@@ -789,6 +795,9 @@ rule variant_annot:
         html_canon="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.html",
         vcf_canon="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz",
         tbi_canon="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz.tbi",
+        html_inGene="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_inGene.html",
+        vcf_inGene="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_inGene.vcf.gz",
+        tbi_inGene="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_inGene.vcf.gz.tbi",
     log:
         stdout="logs/11a_variant_annot/out.o",
         stderr="logs/11a_variant_annot/out.e"
@@ -804,26 +813,40 @@ rule variant_annot:
         mem_gb = 80
     shell:
         """
+        # Only use canonical transcript of each gene
         java -Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp -jar $SNPEFF/snpEff.jar eff \
         -v \
         -canon \
         -stats {output.html_canon} \
         {params.db_id} \
-        {input} \
-        2>>{log.stderr} | \
+        {input} | \
         bgzip > {output.vcf_canon}
 
         tabix {output.vcf_canon}
 
+        # 'default' settings
         java -Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp -jar $SNPEFF/snpEff.jar eff \
         -v \
         -stats {output.html} \
         {params.db_id} \
-        {input} \
-        2>>{log.stderr} | \
+        {input} | \
         bgzip > {output.vcf}
 
-        tabix {output.vcf} 
+        tabix {output.vcf}
+
+        # Only annotate variants that overlap genes
+        java -Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp -jar $SNPEFF/snpEff.jar eff \
+        -v \
+        -no-downstream \
+        -no-intergenic \
+        -no-upstream \
+        -stats {output.html_inGene} \
+        {params.db_id} \
+        {input} | \
+        bgzip > {output.vcf_inGene}
+
+        tabix {output.vcf_inGene}
+
         """
 
 rule snprelate:
