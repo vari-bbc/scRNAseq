@@ -257,6 +257,7 @@ checkpoint STARsolo:
        """
        STAR  \
        --runThreadN {threads} \
+       --limitBAMsortRAM 137438953472 \
        --genomeDir {params.index} \
        --readFilesIn {params.fqs_and_rg[fqs]} \
        --outSAMattrRGline {params.fqs_and_rg[RG]} \
