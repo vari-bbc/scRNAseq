@@ -496,7 +496,7 @@ rule applyBQSR:
 
 rule haplotypecaller:
     """
-    Run haplotypecaller in GVCF mode for each cell barcode and each contig group.
+    Run haplotypecaller in GVCF mode for each cell barcode and each contig group. Some parameters adpated from https://github.com/gatk-workflows/gatk3-4-rnaseq-germline-snps-indels/blob/master/rna-germline-variant-calling.wdl.
     """
     input:
         bam="analysis/variant_calling/05_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam"
@@ -651,7 +651,7 @@ rule sortVCF:
 
 rule merge_and_filter_vcf:
     """
-    Merge the contig group VCFs into one unified VCF, and do quality filters.
+    Merge the contig group VCFs into one unified VCF, and do quality filters. Some parameters adpated from https://github.com/gatk-workflows/gatk3-4-rnaseq-germline-snps-indels/blob/master/rna-germline-variant-calling.wdl.
     """
     input:
         expand("analysis/variant_calling/09_sortvcf/all.{contig_grp}.sort.vcf.gz", contig_grp=contig_grps.name)
@@ -780,6 +780,7 @@ rule extract_ADs:
 
         head -n1 {output.raw} | perl -npe 's/\\tANN\\t/\\tGENE\\t/; s/\.AD(?=[\t\n])//g' > {output.parsed}
 
+        # Parse the comma-separated ANN column (column 5, 0-based counting). Each comma-separated element contains a '|' separated string; We extract fields 3 and 4, 0-based for the gene names.
         tail -n+2 {output.raw} | perl -F'\\t' -lane 'my %hash; $hash{{join("|",(split(/\|/,$_))[3..4])}}++ foreach split(",", $F[5]); $F[5] = join(",", sort(keys(%hash))); print join("\\t", @F)' >> {output.parsed}
         """
 
