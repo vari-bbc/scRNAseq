@@ -50,6 +50,30 @@ if call_variants_for_small_contigs:
         grp_name = 'contigs' + str(i).zfill(2)
         contig_grps.loc[len(contig_grps.index)] = [grp_name, ','.join(chunks[i])]
 
+def get_bams_for_asereadcounter (wildcards):
+    cb_files = []
+    for sample in np.unique(samples['sample'].values):
+        CBs_to_use = []
+        barcodes = ''
+        if call_variant_filtered_cells_only:
+            # Use only the filtered cells
+            barcodes = checkpoints.STARsolo.get(sample=sample).output['filtered'][1]
+        else:
+            # Use the raw barcodes
+            barcodes = checkpoints.STARsolo.get(sample=sample).output['raw'][1]
+            
+        # CBs from filtered cells
+        CBs_to_use = pd.read_table(barcodes, names=['barcode'])['barcode'].tolist()
+
+        # CBs from filtered cells that were also requested based on the decoder file specified in the config file
+        if config['sample_decoder']:
+            CBs_to_keep = pd.read_table(config['sample_decoder'], names=['old_name','new_name'])['old_name'].tolist()
+            CBs_to_use = [CB for CB in CBs_to_use if (sample + '.' + CB) in CBs_to_keep]
+
+        cb_files = cb_files + expand("analysis/variant_calling/02b_ASEReadCounter/{sample}/{sample}.TAG_CB_{CB}.mrkdup.table",
+            sample=sample,
+            CB=CBs_to_use)
+    return cb_files
 
 rule all:
     input:
@@ -60,7 +84,8 @@ rule all:
         # Optional. Variant calling.
         ['analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
         'analysis/variant_calling/11b_snp_pca_and_dendro/report.html',
-        'analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.parsed.table'] if config['call_variants'] else [] 
+        'analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.parsed.table'] if config['call_variants'] else [],
+        get_bams_for_asereadcounter
 
 rule fastqc:
     """
@@ -873,4 +898,38 @@ rule snprelate:
         mem_gb = 60
     script:
         "scripts/snprelate.Rmd"
+
+rule asereadcounter:
+    """
+    Run ASEReadCounter to get allele read counts at sites specified in a VCF file.
+    """
+    input:
+        "analysis/variant_calling/02_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.bam"
+    output:        
+        "analysis/variant_calling/02b_ASEReadCounter/{sample}/{sample}.TAG_CB_{CB}.mrkdup.table"
+    params:
+        ref_fasta=config["ref"]["sequence"],
+        vcf=config['asereadcounter_vcf'] 
+    log:
+        stdout="logs/02b_ASEReadCounter/{sample}/{CB}.o",
+        stderr="logs/02b_ASEReadCounter/{sample}/{CB}.e"
+    benchmark:
+        "benchmarks/02b_ASEReadCounter/{sample}/{CB}.txt"
+    envmodules:
+        config["gatk"]
+    threads: 4
+    resources: 
+        mem_gb = 64
+    shell:
+        """
+        gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
+                ASEReadCounter \
+                -R {params.ref_fasta} \
+                -I {input} \
+                -V {params.vcf} \
+                --min-base-quality 20 \
+                --min-mapping-quality 30 \
+                -O {output}
+        """
+
 

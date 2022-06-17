@@ -1,14 +1,14 @@
 ref:
   # path/to/reference/gDNA.fasta
-  sequence:       /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.fa
-  fai:            /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.fa.fai
-  dict:           /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.dict
+  sequence:       /varidata/research/projects/bbc/versioned_references/2022-03-08_14.47.50_v9/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.fa
+  fai:            /varidata/research/projects/bbc/versioned_references/2022-03-08_14.47.50_v9/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.fa.fai
+  dict:           /varidata/research/projects/bbc/versioned_references/2022-03-08_14.47.50_v9/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.dict
   # path/to/STAR/index/directory
-  index:          /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/indexes/star
+  index:          /varidata/research/projects/bbc/versioned_references/2022-03-08_14.47.50_v9/data/dm6_BDGP6.28.100/indexes/star
   # path/to/gtf/file/with/transcripts.gtf
-  annotation:     /secondary/projects/bbc/research/prep_bbc_shared_current/data/dm6_BDGP6.28.100/annotation/dm6_BDGP6.28.100.gtf
+  annotation:     /varidata/research/projects/bbc/versioned_references/2022-03-08_14.47.50_v9/data/dm6_BDGP6.28.100/annotation/dm6_BDGP6.28.100.gtf
   # Known variants for GATK. If providing more than one, separate with a ',' (no spaces).
-  known_variants: dgrp2_dm6.no_chrUn.vcf.gz
+  known_variants: dgrp2_vcf/dgrp2_dm6.no_chrUn.vcf.gz
   # SNPEff database ID. Ensure that the requested SNPEff database has been prepared.
   snpeff_db_id: 'BDGP6.86'
 
@@ -26,7 +26,12 @@ call_variants: True
 #    Note however that they may still need to be among the 'filtered' set from STARsolo (See 'call_variant_filtered_cells_only' in Snakefile). 
 # Note that col1 (old name) is 'samplename.cellbarcode', where sample name comes from the 'sample' column in the samples.tsv
 # You may leave this blank if no renaming or subsetting is needed
-sample_decoder: "vcf_reheader_DGRP_only.tsv"
+sample_decoder: ""
+
+# VCF for ASEReadCounter
+# Multiallelic variants ignored by ASEReadCounter.
+# Variants without heterozygous genotype calls in the VCF are skipped.
+asereadcounter_vcf: dgrp2_vcf/dgrp2_dm6.no_chrUn.subset.FAKEHETS.vcf.gz
 
 # Packages
 
