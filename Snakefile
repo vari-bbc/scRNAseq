@@ -19,7 +19,7 @@ if not os.path.exists('tmp'):
     os.mkdir('tmp')
 
 # Call variants only for filtered cells as called by STARsolo
-call_variant_filtered_cells_only = True
+call_variant_filtered_cells_only = config['call_variant_filtered_cells_only']
 call_variants_for_small_contigs = True
 
 # BP cutoff for grouping the small contigs
