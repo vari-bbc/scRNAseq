@@ -1,0 +1,768 @@
+---
+title: "ASE"
+author: "Kin Lau"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    code_folding: hide
+    self_contained: yes
+    toc: true
+    toc_depth: 5
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    number_sections: true
+---
+
+```{r keep_figures, cache=TRUE}
+# this chunk is just to keep the _files directory even when we turn off cacheing
+```
+
+```{r starttime}
+# save start time for script
+start_tm <- Sys.time()
+start_tm
+```
+
+```{r make_outdir}
+outdir <- "./ASE_out_files/"
+
+dir.create(outdir, recursive=TRUE)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=TRUE, message=TRUE, cache=FALSE, cache.lazy = FALSE, dev=c('png','pdf'), fig.width=8, fig.height=8, fig.path=paste0(outdir, "individual_figures/"))
+
+```
+
+
+# Packages loaded
+
+```{r loadlibs, echo=TRUE, warning=TRUE, message=TRUE, cache=FALSE}
+library(dplyr)
+library(stringr)
+library(readr)
+library(SummarizedExperiment)
+library(readxl)
+library(VariantAnnotation)
+library(forcats)
+library(scater)
+library(ggplot2)
+library(patchwork)
+library(GenomeInfoDb)
+library(ggVennDiagram)
+library(GenomicFeatures)
+```
+
+# Read in GTF
+
+This is mainly for obtaining the annotations for mito genes. SNPEff already annotated the genes for the linear chromosomes.
+
+```{r read_gtf}
+ref_gtf <- "/secondary/projects/bbc/versioned_references/2022-03-08_14.47.50_v9/data/dm6_BDGP6.28.100/annotation/dm6_BDGP6.28.100.gtf"
+
+# To get the gene names, we import using rtracklayer
+gene_id2name <- as.data.frame(mcols(import(ref_gtf))) %>% 
+  dplyr::select(gene_id, gene_name) %>% unique()
+stopifnot(nrow(gene_id2name) == length(unique(gene_id2name$gene_id)))
+
+# to get the GR object for the genes, we read in the GTF as a TxDb
+txdb <- makeTxDbFromGFF(ref_gtf)
+txdb_genes <- genes(txdb)
+txdb_genes_mt <- txdb_genes[seqnames(txdb_genes)=="mitochondrion_genome"]
+```
+
+
+# Read in and filter AD counts
+
+Here, we filter for variants that are biallelic, genic, SNPs, overlapping only one gene and residing on standard chromosomes (not contigs).
+
+```{r get_std_chroms}
+ref_fasta <- "/secondary/projects/bbc/versioned_references/2022-03-08_14.47.50_v9/data/dm6_BDGP6.28.100/sequence/dm6_BDGP6.28.100.fa"
+
+# make GenomicRanges from the genome
+ref_gr <- as(seqinfo(FaFile(ref_fasta)), "GRanges")
+
+std_chroms_gr <- keepStandardChromosomes(ref_gr, pruning.mode="coarse")
+```
+
+```{r read_ad}
+vcf_ad <- read_tsv("../unix_analyses/LEMH_scRNA_VBCS-759/analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.parsed.table")
+
+# keep only the standard chromosomes and mitochondrial genome
+std_chrom_var <- vcf_ad$CHROM %in% c(seqlevels(std_chroms_gr), "mitochondrion_genome")
+table(std_chrom_var)
+vcf_ad <- vcf_ad[std_chrom_var, ]
+
+# When a given variant returns 'ERROR_CHROMOSOME_NOT_FOUND' in SNPEff, it leads to just a '|' in the GENE column. Here we change those to NA to be consistent with the variants with find-able CHROM that are not genic.
+vcf_ad$GENE <- ifelse(vcf_ad$GENE=="|", NA, vcf_ad$GENE)
+
+# For variants causing gene fusion, the gene id and gene names will be multiple values separated by '&'
+grep(vcf_ad$GENE, pattern = "&", perl = TRUE, value = TRUE)
+
+# split the GENE column into id and name
+genes_list <- str_split(vcf_ad$GENE, ",") # split based on comma in case a variant was annotated to multiple genes.
+vcf_ad$gene_id <- unlist(lapply(genes_list, function(x) paste(str_extract(x, pattern = "[^\\|]+$"), collapse = ",")))
+vcf_ad$gene_name <- unlist(lapply(genes_list, function(x) paste(str_extract(x, pattern = "^[^\\|]+"), collapse = ",")))
+```
+
+# Add gene annotations for the mitochondrial variants
+
+SNPEff does not annotate these for some reason.
+
+```{r mito_annot}
+# make GR object for the variants
+vcf_ad_gr <- makeGRangesFromDataFrame(vcf_ad %>% dplyr::mutate(start=POS, end=POS))
+
+# Find overlaps between the variants and the mito genes
+mito_vars <- findOverlaps(vcf_ad_gr, txdb_genes_mt)
+
+if(length(mito_vars) > 0) {
+  # make sure all the mito variants were not annotated.
+  stopifnot(all(is.na( vcf_ad[queryHits(mito_vars), "GENE"] )))
+  
+  # split the hits object by the variant indexes
+  mito_genes_by_qry <- split(subjectHits(mito_vars), queryHits(mito_vars))
+  
+  # for each mito variant, fill in the gene info
+  for (i in 1:length(mito_genes_by_qry)){
+    curr_mito_genes <- mito_genes_by_qry[[i]]
+    curr_var_idx <- as.integer(names(mito_genes_by_qry))[i]
+    
+    # get the gene ids and gene names
+    gene_ids <- mcols(txdb_genes_mt[curr_mito_genes])$gene_id
+    gene_names <- gene_id2name$gene_name[match(gene_ids, gene_id2name$gene_id)]
+    
+    # concatenate the gene names and gene ids and fill in the GENE column
+    vcf_ad$GENE[curr_var_idx] <- paste(
+      sapply(1:length(gene_ids), function(j){
+        paste0(gene_names[j], "|", gene_ids[j])
+      }), 
+      collapse=",")
+    
+    # fill in the gene_id and gene_name columns
+    vcf_ad$gene_id[curr_var_idx] <- paste(gene_ids, collapse=",")
+    vcf_ad$gene_name[curr_var_idx] <-  paste(gene_names, collapse=",")
+  }
+}
+```
+
+# Filter the variants
+
+- Keep only those that overlap a gene.
+- Keep only those with only one ALT allele (biallelic).
+- Keep only SNPs.
+- Remove those that overlap more than one gene based on more than one element in GENE column.
+
+
+```{r var_filters}
+# filter for genic variants
+genic <- !is.na(vcf_ad$GENE)
+
+# filter for biallelic
+biallelic <- !str_detect(vcf_ad$ALT, ",")
+
+# filter for SNPs
+snp <- vcf_ad$TYPE == "SNP"
+
+# filter out variants overlapping more than one gene. 
+multigene <- str_detect(vcf_ad$GENE, ",")
+
+prop.table(table(genic, biallelic))
+prop.table(table(snp, multigene))
+prop.table(table(snp, biallelic))
+prop.table(table(genic, multigene))
+
+# Do the filtering
+vcf_ad <- vcf_ad[which(genic & biallelic & snp & !multigene), ]
+nrow(vcf_ad)
+stopifnot( all(str_detect(vcf_ad$gene_id, "^FB")) ) # check that there is a valid gene id for all SNPs after filtering for genic SNPs
+
+# how many genes represented after filtering for biallelic , genic, SNPs overlapping only one gene
+length(unique(vcf_ad$gene_id))
+
+# check ALT after filtering for biallelic , genic, SNPs overlapping only one gene
+stopifnot(all(unique(vcf_ad$ALT) %in% c("T", "A", "G", "C")))
+stopifnot(all(unique(vcf_ad$REF) %in% c("T", "A", "G", "C")))
+
+# add rownames
+vcf_ad$var_id <- paste(vcf_ad$CHROM, vcf_ad$POS, vcf_ad$REF, vcf_ad$ALT, sep="-")
+stopifnot(length(vcf_ad$var_id) == unique(length(vcf_ad$var_id)))
+```
+
+Here we prepare the assays and rowData for the SE that we will create.
+
+```{r prep_ad_for_SE}
+ad_cols <- sapply(vcf_ad, function(x) all(str_detect(x, "^\\d+(,\\d+)+$"))) # Look for AD columns based on containing values that look like this: 999,999
+message("Assuming these are not AD columns: ", paste(colnames(vcf_ad)[!ad_cols], collapse = ", "))
+message("Assuming these are AD columns: ", paste(colnames(vcf_ad)[ad_cols], collapse = ", "))
+
+ad_df <- vcf_ad[, ad_cols]
+
+# ensure 1 comma for each data point
+stopifnot(all( apply(ad_df, MARGIN = 2, FUN = function(x) all(str_count(x, ",") == 1)) ))
+
+ad_df$var_id <- vcf_ad$var_id
+
+ad_counts <- list(
+ ref=ad_df %>% 
+   dplyr::mutate(across( one_of(colnames(vcf_ad)[ad_cols]), function(x) as.numeric(str_extract(x, "^[^,]+")) )) %>% 
+   tibble::column_to_rownames("var_id") %>%
+   as.matrix(),
+ alt=ad_df %>% 
+   dplyr::mutate(across( one_of(colnames(vcf_ad)[ad_cols]), function(x) as.numeric(str_extract(x, "[^,]+$")) )) %>% 
+   tibble::column_to_rownames("var_id") %>%
+   as.matrix()
+)
+ad_counts$total <- ad_counts$ref + ad_counts$alt
+ad_counts$ref_ratio <- ad_counts$ref / ad_counts$total
+
+rowdat <- vcf_ad[, !ad_cols] %>% 
+  dplyr::mutate(start=POS, end=POS) %>%
+  tibble::column_to_rownames("var_id") 
+
+stopifnot( identical( rownames(rowdat), rownames(ad_counts[[1]]) ) )
+rowranges <- makeGRangesFromDataFrame(rowdat, keep.extra.columns = TRUE)
+```
+
+
+# Read in DGRP variants, filtered 
+
+Here we read in the VCF file containing genotype calls for the two parents. These have been pre-filtered using bcftools to keep only those that are biallelic, SNPs and with at least one non-ref allele count in either parent.
+
+```{r read_dgrp}
+# Reading VCF that was prefiltered using bcftools view --samples line_737,line_352 --max-alleles 2 --types snps --min-ac=1 --trim-alt-alleles
+# basically the above filters for just the two parental lines, removes multiallelic variants, keeps only SNPs, and removes variants that were not variant in either line.
+# NOTE: I tested the above and it produces the same results as 'bcftools view -O u --samples line_737,line_352 --types snps --trim-alt-alleles --threads 4 dgrp2_dm6.no_chrUn.vcf.gz | bcftools view -o split_filt.vcf --threads 4 --max-alleles 2 --min-ac=1'
+dgrp <- readVcf("../unix_analyses/LEMH_scRNA_VBCS-759/dgrp2_vcf/dgrp2_dm6.no_chrUn.subset.vcf.gz")
+
+# check for non-standard chromosomes
+stopifnot( all(seqnames(rowRanges(dgrp)) %in% seqlevels(std_chroms_gr)) )
+
+colnames(dgrp) <- fct_recode(colnames(dgrp), mat.line_737="line_737", pat.line_352="line_352")
+
+GT <- geno(dgrp)$GT
+```
+
+Below is the breakdown of genotype calls before additional filtering in R below.
+
+```{r geno_b4_more_filters}
+# breakdown of genotypes before additional filtering in R below
+prop.table( table(mat.line_737=GT[, "mat.line_737"], pat.line_352=GT[, "pat.line_352"]) )
+```
+
+Here we filter for polymorphic sites between the two parents (1/1 in one and 0/0 in the other).
+
+```{r polymorhic_dgrp}
+stopifnot(ncol(GT) == 2)
+polymorph <- (GT[,1] == "1/1" & GT[,2] == "0/0") | (GT[,1] == "0/0" & GT[,2] == "1/1")
+table(polymorph)
+dgrp_polymorph <- dgrp[polymorph]
+GT_polymorph <- geno(dgrp_polymorph)$GT
+
+# breakdown of homo refs vs homo alts in the polymorphic variants
+table(mat.line_737=GT_polymorph[, "mat.line_737"], pat.line_352=GT_polymorph[, "pat.line_352"])
+```
+
+
+```{r prep_dgrp_for_adding_to_SE}
+dgrp_gr <- rowRanges(dgrp_polymorph)
+
+stopifnot(all(rownames(GT_polymorph) == names(dgrp_gr)))
+mcols(dgrp_gr) <- cbind(mcols(dgrp_gr), as.data.frame(GT_polymorph)) # combine the meta data to the genotype calls
+
+stopifnot(all(dgrp_gr$FILTER=="PASS")) # in DGRP, all the FILTERs appear to be PASS
+stopifnot(all(dgrp_gr$QUAL==999)) # in DGRP, all the QUALs appear to be 999
+stopifnot(all(is.na(dgrp_gr$paramRangeID))) # not sure where this column comes from, but it's all NAs
+mcols(dgrp_gr) <- mcols(dgrp_gr)[, -match( c("FILTER","QUAL","paramRangeID"), colnames(mcols(dgrp_gr)) )]
+
+# add DGRP prefix to columns
+colnames(mcols(dgrp_gr)) <- paste0("DGRP.", colnames(mcols(dgrp_gr)))
+
+mcols(dgrp_gr)$DGRP.REF <- as.character(mcols(dgrp_gr)$DGRP.REF)
+
+# Collapse BioStringslist to characterlist, then vector. See https://support.bioconductor.org/p/66874/
+clist <- CharacterList(mcols(dgrp_gr)$DGRP.ALT)
+stopifnot( all(sapply(clist, length) == 1) )
+mcols(dgrp_gr)$DGRP.ALT <- unlist(clist)
+
+```
+
+
+# Read in meta data for each sample
+
+```{r read_meta_data}
+# read barcode decoder
+barcode_decoder <- read_tsv("../unix_analyses/LEMH_scRNA_VBCS-759/whitelists/cellseq192/celseq_barcodes.192.txt",
+                            col_names = c("Barcode_index","Barcode"))
+
+# read meta data
+meta <- read_excel("../unix_analyses/LEMH_scRNA_VBCS-759/VBCS-759_meta.xlsx") %>%
+  dplyr::rename(Barcode_index="Barcode") %>%
+  dplyr::left_join(., barcode_decoder, by="Barcode_index") %>%
+  dplyr::mutate(Sample=paste0(Library, ".", Barcode)) %>%
+  tibble::column_to_rownames("Sample")
+
+# Add more columns by parsing the ID column
+# From Edu: 
+# The metadata that is essential is already in the sample name. The first digit is the time of collection. (1, 2, or 3), the second digit is the cohort (A, B and C are all fertilized embryos while only O MEANS unfertilized eggs), the numbers after the hyphen is the replicate (1-40 embryos and 1-8 for unfertilized eggs). For instance, sample 2A-11, is replicate 11 of embryos collected in cohort A after 2 hours while 1O-03 is replicate 03 of unfertilized eggs collected after 1 hour.
+
+stopifnot(all(str_detect(meta$ID, "^[123][ABCO]\\-"))) # check that all values obey the scheme described by Edu
+meta <- meta %>%
+  dplyr::mutate(time = str_extract(ID, "^[123]"),
+                cohort = str_extract(ID, "(?<=^[123])[^\\-]"))
+
+meta <- meta[colnames(ad_counts[[1]]), ]
+```
+
+
+# Make SummarizedExperiment with REF, ALT, total counts etc as assays
+
+```{r make_se}
+for(i in 2:length(ad_counts)){
+ stopifnot(identical(rownames(ad_counts[[1]]), rownames(ad_counts[[i]]))) 
+}
+stopifnot( identical(names(rowranges), rownames(ad_counts[[1]])) )
+
+for(i in 2:length(ad_counts)){
+ stopifnot(identical(colnames(ad_counts[[1]]), colnames(ad_counts[[i]]))) 
+}
+stopifnot(identical( colnames(ad_counts[[1]]), rownames(meta) ))
+
+se <- SummarizedExperiment(assays=ad_counts, 
+                           rowRanges=rowranges,
+                           colData = meta)
+```
+
+Here we merge the filtered DGRP (see above) with our variant calls by looking for perfect genomic overlaps (same chrom and position).
+
+```{r add_dgrp_genotype_calls}
+# merge DGRP with variant calls by looking for perfect genomic overlaps
+overlaps <- findOverlaps(query = dgrp_gr, subject = se, type = "equal")
+
+# ensure no double-matching
+stopifnot(sum(duplicated(queryHits(overlaps))) == 0)
+stopifnot(sum(duplicated(subjectHits(overlaps))) == 0)
+
+# add the meta data from the DGRP GR to the SE
+for(i in 1:ncol(mcols(dgrp_gr))){
+  curr_col <- colnames(mcols(dgrp_gr))[i]
+  mcols(se)[[ curr_col ]] <- NA
+  mcols(se)[[ curr_col ]][subjectHits(overlaps)] <- mcols(dgrp_gr)[[ curr_col ]][queryHits(overlaps)]
+}
+
+```
+
+# Rename the sample names to biologically meaningful names
+
+```{r rename_samples}
+se$orig_vcf_id <- colnames(se)
+colnames(se) <- se$ID
+```
+
+# Filter for variants with greater than 5 counts in at least 5 samples for ref and alt, unless it is a mitochondrial variant.
+
+```{r filter_min_counts}
+# subset for variant sites with greater than 5 counts in at least 5 samples.
+ref_expressed <- rowSums( assay(se, "ref") > 5 ) >= 5
+alt_expressed <- rowSums( assay(se, "alt") > 5 ) >= 5
+is_mito_gene <- str_detect(names(ref_expressed), "^mito")
+
+# most of the mito variants have only one allele expressed.
+table( ref_expressed, alt_expressed, is_mito_gene )
+
+se <- se[(ref_expressed & alt_expressed) | (is_mito_gene & (ref_expressed | alt_expressed))] 
+
+# genes represented
+length( unique(rowData(se)$gene_id) )
+
+# count potential fusion genes, which are annotated as geneA&geneB by SNPEff
+length( unique(grep(x=rowData(se)$gene_id, pattern="&", value=TRUE)) )
+
+# output sce
+write_rds(se, file.path(outdir, "se.rds"))
+```
+
+
+# Compare our variant calling to DGRP
+
+Here we take a look at how many variants had a match in DGRP, and then within those, how many had matching REF and ALT calls.
+
+```{r dgrp_vs_varCalls}
+# how many variant calls matched with a DGRP variant
+table(ifelse(is.na(mcols(se)$DGRP.REF), "no_match", "matched_by_DGRP"))
+matched_se <- se[!is.na(mcols(se)$DGRP.REF)]
+stopifnot(all(!is.na(mcols(matched_se)$DGRP.ALT))) # check that DGRP.ALT also has no NA's
+
+# within the matched variants, how many have same REF and ALT basecalls
+dgrp_and_varCall_match <- (mcols(matched_se)$REF == mcols(matched_se)$DGRP.REF) & 
+  (mcols(matched_se)$ALT == mcols(matched_se)$DGRP.ALT)
+table( ifelse(dgrp_and_varCall_match, "Match", "Mismatch" ) )
+
+# subset for variants with the same basecalls for REF and ALT in DGRP and our variant calling
+matched_se <- matched_se[dgrp_and_varCall_match]
+
+# Within the variants with matched DGRP variant calls (same REF and ALT). How many genes represented?
+length(unique(rowData(matched_se)$gene_id))
+
+# Within the variants with matched DGRP variant calls (same REF and ALT). Variants per gene
+summary( as.matrix(table(rowData(matched_se)$gene_id))[, 1] )
+
+```
+
+
+## Make assays for maternal and paternal alleles instead of REF and ALT
+
+Based on the DGRP parental genotype calls, we make a REF_origin column, which indicates which parent ("mat" or "pat"), the REF allele comes from.
+
+```{r add_REF_origin_column_to_rowData}
+mat_is_REF <- rowData(matched_se)$DGRP.mat.line_737=="0/0" & rowData(matched_se)$DGRP.pat.line_352=="1/1"
+pat_is_REF <- rowData(matched_se)$DGRP.mat.line_737=="1/1" & rowData(matched_se)$DGRP.pat.line_352=="0/0"
+stopifnot( sum(xor(mat_is_REF, pat_is_REF)) == length(matched_se) ) # make sure each gene is either mat_is_REF or pat_is_REF
+stopifnot( sum(mat_is_REF, pat_is_REF) == length(matched_se) ) # just double-checking the above
+
+rowData(matched_se)$REF_origin <- ifelse(mat_is_REF, "mat", "pat")
+
+table(rowData(matched_se)$REF_origin)
+```
+
+```{r define_get_parental_counts_func}
+# 'se' is a SummarizedExperiment with 'ref' and 'alt' assays, and a rowData column named 'REF_origin' that indicates whether a given row's REF allele comes from 'mat' or 'pat'. The 'REF_origin' column is assumed to consist only of 'mat' or 'pat' values, with no NAs.
+# A SummarizedExoeriment is returned with a 'mat' and a 'pat' assay.
+get_parental_counts <- function(se){
+  
+  ref_mat <- assay(se, "ref")
+  alt_mat <- assay(se, "alt")
+  
+  for(parent in c("mat", "pat")){
+    # set all counts to alt counts
+    mat <- alt_mat
+    
+    # Get vector to indicate which rows correspond to cases where the REF allele belongs to the current 'parent'
+    stopifnot( all(rowData(se)$REF_origin %in% c("mat","pat")) )
+    ref_is_target_parent <- which(rowData(se)$REF_origin == parent)
+    
+    # then change the rows where 'ref_is_target_parent' is TRUE to the ref count
+    mat[ref_is_target_parent, ] <- ref_mat[ref_is_target_parent, ]
+    
+    assay(se, parent) <- mat
+  }
+  
+  se
+}
+```
+
+Here we will fill in the 'mat' and 'pat' assays, by combining specific rows from either the 'ref' or the 'alt' assays based on the value of the 'REF_origin' column.
+
+```{r add_mat_and_pat_assays}
+matched_se <- get_parental_counts(matched_se)
+
+```
+
+
+```{r define_var_rank_function}
+add_variant_ranks_to_SCE <- function(sce){
+  rowdat <- as.data.frame( rowData(sce), optional = TRUE ) %>% 
+    tibble::rownames_to_column("var_id")
+  
+  # Calculate metrics for ranking variants below
+  rowdat$tot_counts <- rowSums( assay(sce, "total") )
+  rowdat$num_samps_expr_both_alleles <- rowSums( (assay(sce, "ref") > 0) & (assay(sce, "alt") > 0) )
+  
+  # add rankings for variants per gene
+  rowdat <- rowdat %>%
+    dplyr::mutate(orig_row_order=row_number()) %>%
+    dplyr::group_by(gene_id) %>%
+    dplyr::arrange(desc(num_samps_expr_both_alleles), desc(tot_counts)) %>%
+    dplyr::mutate(var_rank=row_number()) %>%
+    dplyr::ungroup()
+  
+  # fix the row order
+  rowdat <- rowdat %>%
+    dplyr::arrange(orig_row_order) %>%
+    dplyr::select(-orig_row_order) %>%
+    tibble::column_to_rownames("var_id") 
+  
+  rowdat <- DataFrame(rowdat)
+  
+  stopifnot( identical(rownames(sce), rownames(rowdat)) )
+  rowData(sce) <- rowdat
+  
+  sce
+}
+
+```
+
+The last modification to the SCE/SE object is to add a 'var_rank' column in the rowData to indicate the ranking of the variants of a given gene.
+
+```{r add_ranks_to_matched_sce}
+matched_sce <- as(matched_se, "SingleCellExperiment")
+matched_sce <- add_variant_ranks_to_SCE(matched_sce)
+```
+
+Output both RDS and tsv files for the different assays.
+
+```{r out_matched}
+# output sce
+write_rds(matched_sce, file.path(outdir, "matched_sce.rds"))
+
+for ( assay_nm in assayNames(matched_sce) ){
+  outdf <- as.data.frame( cbind(rowData(matched_sce), assay(matched_sce, assay_nm)), optional=TRUE )
+  write_tsv( outdf, file.path(outdir, paste0("matched.", assay_nm, ".tsv.gz")) )
+}
+```
+
+## Look at allele counts by cohort
+
+```{r define_mat_and_pat_qc_func}
+make_mat_and_pat_qc_plots <- function(sce){
+  sce.mat <- addPerCellQC(sce, assay.type="mat")
+  sce.pat <- addPerCellQC(sce, assay.type="pat")
+  
+  plot_p1 <- function(x, title) plotColData(x, x = "cohort", y="sum", colour_by="time", other_fields="cohort") + ggtitle(title) + scale_y_log10()
+  p1 <- ( plot_p1(sce.mat, "Mat counts") ) / ( plot_p1(sce.pat, "Pat counts") ) + 
+    patchwork::plot_annotation(title="Sum counts across variant sites")
+  
+  plot_p2 <- function(x, title) plotColData(x, x = "cohort", y="detected", colour_by="time", other_fields="cohort") + ggtitle(title) + scale_y_log10()
+  p2 <- ( plot_p2(sce.mat, "Mat counts") ) / ( plot_p2(sce.pat, "Pat counts") ) + 
+    patchwork::plot_annotation(title="Variant sites detected")
+  
+  # Relationship between sum and detected
+  plot_p3 <- function(x, title) plotColData(x, x = "sum", y="detected", colour_by="time", other_fields="cohort") + 
+            facet_wrap(~cohort, nrow = 1) + ggtitle(title)
+  p3 <- ( plot_p3(sce.mat, "Mat counts") ) / ( plot_p3(sce.pat, "Pat counts") )
+  
+  list(p1, p2, p3)
+}
+
+```
+
+Here we filter the data for only the 1-ranked variants (so that we have 1 variant per gene) and plot some summary statistics based on total counts and total genes detected using the 'mat' and 'pat' counts.
+
+```{r counts_by_cohort, fig.height=5, fig.width=8}
+matched_sce.1_var_per_gene <- matched_sce[ rowData(matched_sce)$var_rank == 1, ]
+nrow(matched_sce.1_var_per_gene)
+stopifnot(nrow(matched_sce.1_var_per_gene) == length(unique(rowData(matched_sce)$gene_id)))
+
+make_mat_and_pat_qc_plots(matched_sce.1_var_per_gene)
+```
+
+## Ref to total counts ratio
+
+If there is no biased ASE, we expect the ref ratio to be 0.5 but mapping bias of the reference allele compared to the alternate allele could nudge this higher than 0.5. Here, we find the median ref ratio across groups defined by time and cohort, then plot violin plots. Groups 3 A, B and C show a median at about 0.5. The other groups (earlier time points and the unfertilized cohort O) all show bimodal distributions peaking at 0 or 1. This makes sense somewhat considering that the paternal allele takes some time to ramp up and in the O cohort, there should be no expression of the paternal allele.
+
+```{r ref_ratio_dist, fig.height=4}
+ref_ratio_agg <- aggregateAcrossCells(matched_sce.1_var_per_gene, 
+                                      ids=colData(matched_sce.1_var_per_gene)[, c("time", "cohort")],
+                                      use.assay.type="ref_ratio",
+                                      statistics="median")
+colnames(ref_ratio_agg) <- paste0(ref_ratio_agg$time, ".", ref_ratio_agg$cohort)
+
+ref_ratio_agg_mat <- assay(ref_ratio_agg, "ref_ratio")
+ref_ratio_agg_df <- as.data.frame(ref_ratio_agg_mat) %>%
+  tidyr::pivot_longer(cols=everything(), names_to="group", values_to = "median_ref_ratio")
+
+ref_ratio_agg_df <- na.omit(ref_ratio_agg_df)
+num_vars_per_group <- dplyr::count(ref_ratio_agg_df, group)
+
+ggplot(na.omit(ref_ratio_agg_df), aes(x=group, y=median_ref_ratio)) + 
+  geom_violin(draw_quantiles=c(0.5)) +
+  geom_text(data = num_vars_per_group, aes(y = 1, label = n),  nudge_y=0.05) +
+  ggtitle("Distribution of median ref ratio by group (# sites in each plot indicated)")
+```
+
+
+# Variants that did not match DGRP
+
+Here we subset for the variants that did not have a match in the filtered DGRP. We go through the same process as for the matched variants, but we have to infer the parental alleles based on the 'O' cohort samples, which should express only (or at least mostly) the maternal alleles.
+
+```{r unmatched_vars}
+unmatched_se <- se[is.na(mcols(se)$DGRP.REF)]
+length(unmatched_se)
+
+unmatched_sce <- as(unmatched_se, "SingleCellExperiment")
+```
+
+
+```{r filt_by_expr_of_both_alleles}
+## Filter for variants with >n samples with >=5 reads supporting both alleles
+
+# Without knowing the parental genotypes, it is trickier to filter for polymorphic sites. Here we apply a filter based on occurrence of reads supporting both alleles. But, we don't apply this filter to the mito genes because those are expected to be inherited from just one parent (usually maternal).
+
+# non_O_cohort <- unmatched_sce[, unmatched_sce$cohort != "O"]
+# both_alleles_expressed <- assay(non_O_cohort, "ref") >= 5 & assay(non_O_cohort, "alt") >= 5
+# both_alleles_expressed_0.1 <- rowSums(both_alleles_expressed) > (0.1 * ncol(non_O_cohort))
+# is_mito_gene <- str_detect(names(both_alleles_expressed_0.1), "^mito")
+# table(both_alleles_expressed_0.1, is_mito_gene)
+# 
+# unmatched_sce <- unmatched_sce[both_alleles_expressed_0.1 | is_mito_gene, ]
+```
+
+
+## Identify the parental alleles
+
+Here, we subset for the O cohort samples to determine the parental alleles.
+
+```{r subset_O_cohort, fig.height=2.5, fig.width=6}
+# keep 'O' cohort only (unfertilized)
+unmatched_sce_O_only <- unmatched_sce[, with(colData(unmatched_sce), cohort=="O")]
+
+# Keep only those with min number total counts
+# Add per-cell summaries of 'total' counts assay
+unmatched_sce_O_only <- addPerCellQC(unmatched_sce_O_only, assay.type="total")
+
+#unmatched_sce_O_only$keep <- with(colData(unmatched_sce_O_only), sum >= quantile(sum, 0.25)) # Keep if sum counts is greater than the first quartile (25th percentile).
+
+#unmatched_sce_O_only$keep <- with(colData(unmatched_sce_O_only), sum >= ( quantile(sum, 0.25) - 1.5*IQR(sum) ) ) # Keep if not a low number outlier based on Q0.25 - 1.5*IQR method.
+
+unmatched_sce_O_only$keep <- TRUE # Don't filter
+
+table(unmatched_sce_O_only$keep)
+
+plotColData(unmatched_sce_O_only, x="time", y="sum", colour_by = "keep",
+            other_fields="cohort") + facet_wrap(~cohort) + ggtitle("Total count") +
+plotColData(unmatched_sce_O_only, x="time", y="detected", colour_by = "keep",
+            other_fields="cohort") + facet_wrap(~cohort) + ggtitle("Detected features")
+
+unmatched_sce_O_only <- unmatched_sce_O_only[ , unmatched_sce_O_only$keep]
+
+```
+
+```{r subset_O_cohort_and_timept1, fig.height=4}
+
+# keep 'O' cohort only (unfertilized) and timepoint 1 only
+#unmatched_sce_O_only <- unmatched_sce_O_only[, with(colData(unmatched_sce_O_only), cohort=="O" & time=="1")] 
+```
+
+Here we fill in the 'REF_origin' column using the logic that the 'O' cohort samples will have much higher AD for the maternal allele than paternal. 
+
+- First, we make an arbitrary cutoff of >=10 counts to identify sample-variant combinations that are 'high-expressing'. 
+
+- For a given variant, if less than 5 of the 'O' cohort samples are 'high-expressing', we assign a value of NA (cannot determine parental alleles) to the 'REF_origin' column.
+
+- For a given variant, if all the high-expressing samples have a ref_ratio of >=0.95 ( ref AD / (ref AD + alt AD) ), we assign a value of "mat" to the 'REF_origin' column. Alternatively, if all the high-expressing samples have a ref_ratio of <=0.05, we assign "pat". 
+ 
+
+```{r identify_parental_alleles}
+# get an idea of the ref_ratio distribution across the samples.
+lapply(colnames(unmatched_sce_O_only), function(x) summary(assay(unmatched_sce_O_only, "ref_ratio")[, x]))
+
+# determine parental allele based on allele ratio of the O samples
+min_hiExpr_samps <- 5
+stopifnot(min_hiExpr_samps <= ncol(unmatched_sce_O_only))
+hi_expr <- assay(unmatched_sce_O_only, "total") >= 10
+hi_ref_ratio <- (assay(unmatched_sce_O_only, "ref_ratio") >= 0.95) & hi_expr
+lo_ref_ratio <- (assay(unmatched_sce_O_only, "ref_ratio") <= 0.05) & hi_expr
+
+mat_is_REF <- ifelse(rowSums( hi_expr ) >= min_hiExpr_samps,#( 0.5 * ncol(unmatched_sce_O_only) ), 
+                     rowSums( hi_ref_ratio ) == rowSums( hi_expr ), 
+                     NA)
+
+pat_is_REF <- ifelse(rowSums( hi_expr ) >= min_hiExpr_samps,#( 0.5 * ncol(unmatched_sce_O_only) ),
+                     rowSums( lo_ref_ratio ) == rowSums( hi_expr ),
+                     NA)
+
+# See how many variants had parental alleles inferred
+table(mat_is_REF | pat_is_REF, useNA="ifany")
+
+# first set REF_origin to all NAs, then assign "mat" or "pat" values
+rowData(unmatched_sce_O_only)$REF_origin <- NA
+
+# make sure no overlaps between mat_is_REF and pat_is_REF
+stopifnot( all(!which(mat_is_REF) %in% which(pat_is_REF)) ) 
+
+# set REF_origin to "mat" or "pat" if mat_is_REF or pat_is_REF respectively
+rowData(unmatched_sce_O_only)$REF_origin[which(mat_is_REF)] <- "mat"
+rowData(unmatched_sce_O_only)$REF_origin[which(pat_is_REF)] <- "pat"
+
+table(rowData(unmatched_sce_O_only)$REF_origin, useNA="ifany")
+
+# bind REF_origin column to the full SCE object
+stopifnot( all(rownames(unmatched_sce) == rownames(unmatched_sce_O_only)) ) # ensure row order was maintained
+rowData(unmatched_sce)$REF_origin <- rowData(unmatched_sce_O_only)$REF_origin
+```
+
+Remove the variants with unknown parental alleles, then get the 'mat' and 'pat' counts.
+
+```{r add_mat_and_pat_assays_to_unmatched_sce}
+# Remove the rows with unknown REF_origin
+unmatched_sce <- unmatched_sce[!is.na(rowData(unmatched_sce)$REF_origin), ]
+nrow(unmatched_sce)
+length(unique(rowData(unmatched_sce)$gene_id))
+
+unmatched_sce <- get_parental_counts(unmatched_sce)
+
+```
+
+Add the variant ranks, as before for the DGRF-matched variants.
+
+```{r add_ranks_to_unmatched_sce}
+unmatched_sce <- add_variant_ranks_to_SCE(unmatched_sce)
+```
+
+Output RDS and tsv files as before for the DGRF-matched variants.
+
+```{r out_unmatched}
+# output sce
+write_rds(unmatched_sce, file.path(outdir, "unmatched_sce.rds"))
+
+for ( assay_nm in assayNames(unmatched_sce) ){
+  outdf <- as.data.frame( cbind(rowData(unmatched_sce), assay(unmatched_sce, assay_nm)), optional=TRUE )
+  write_tsv( outdf, file.path(outdir, paste0("unmatched.", assay_nm, ".tsv.gz")) )
+}
+```
+
+
+## Look at allele counts by cohort
+
+As we did for the DGRF-matched variants, we filter the data for only the 1-ranked variants (so that we have 1 variant per gene) and plot some summary statistics based on total counts and total genes detected using the 'mat' and 'pat' counts.
+
+## Mito variants only
+
+```{r counts_by_cohort_unmatched_mito, fig.height=5, fig.width=8}
+unmatched_sce.1_var_per_gene <- unmatched_sce[ rowData(unmatched_sce)$var_rank == 1 & 
+                                                 str_detect(rownames(unmatched_sce), "mitochondrion_genome"), ]
+nrow(unmatched_sce.1_var_per_gene)
+#nrow(unmatched_sce.1_var_per_gene) == length(unique(rowData(unmatched_sce)$gene_id))
+
+make_mat_and_pat_qc_plots(unmatched_sce.1_var_per_gene)
+```
+
+
+## Non mito variants
+
+```{r counts_by_cohort_unmatched_nonmito, fig.height=5, fig.width=8}
+unmatched_sce.1_var_per_gene <- unmatched_sce[ rowData(unmatched_sce)$var_rank == 1 & 
+                                                 !str_detect(rownames(unmatched_sce), "mitochondrion_genome"), ]
+nrow(unmatched_sce.1_var_per_gene)
+#nrow(unmatched_sce.1_var_per_gene) == length(unique(rowData(unmatched_sce)$gene_id))
+
+make_mat_and_pat_qc_plots(unmatched_sce.1_var_per_gene)
+```
+
+# Overlap of the genes represented in the matched and unmatched 
+
+Many genes are unique to either the DGRP-matched or unmatched gene sets.
+
+```{r venn, fig.width=4, fig.height=4}
+ggVennDiagram::ggVennDiagram(list(DGRP_matched=unique(rowData(matched_sce)$gene_id), 
+                                  no_DGRP_match=unique(rowData(unmatched_sce)$gene_id)))
+
+```
+
+
+# SessionInfo
+
+```{r sessioninfo}
+sessionInfo()
+```
+
+# Time
+
+```{r endtime}
+# output time taken to run script
+end_tm <- Sys.time()
+end_tm
+end_tm - start_tm
+
+```
