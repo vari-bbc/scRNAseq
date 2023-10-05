@@ -99,15 +99,16 @@ rule fastqc:
     params:
         outdir="analysis/fastqc/"
     log:
-        stdout="logs/fastqc/{fq_pref}.o",
-        stderr="logs/fastqc/{fq_pref}.e"
+
+
     benchmark:
         "benchmarks/fastqc/{fq_pref}.txt"
     envmodules:
         config["fastqc"]
     threads: 1
     resources:
-        mem_gb = 32
+        mem_gb = 32,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         fastqc --outdir {params.outdir} {input}
@@ -124,15 +125,16 @@ rule fastq_screen:
         txt = "analysis/fastq_screen/{fq_pref}_screen.txt",
     params:
     log:
-        stdout="logs/fastq_screen/{fq_pref}.o",
-        stderr="logs/fastq_screen/{fq_pref}.e"
+
+
     benchmark:
         "benchmarks/fastq_screen/{fq_pref}.txt"
     envmodules:
         config["fastq_screen"]
     threads: 8
     resources:
-        mem_gb = 32
+        mem_gb = 32,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         fastq_screen --threads {threads} --outdir analysis/fastq_screen/ {input}
@@ -268,10 +270,11 @@ checkpoint STARsolo:
         fqs_and_rg = get_star_solo_input
     threads: 16
     resources:
-        mem_gb = 180
+        mem_gb = 180,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     log:
-        stdout="logs/STARsolo/{sample}.o",
-        stderr="logs/STARsolo/{sample}.e"
+
+
     benchmark:
         "benchmarks/STARSolo/{sample}.txt"
     envmodules:
@@ -308,10 +311,11 @@ rule gunzip_10x_v3_whitelist:
         "whitelists/10x_v3/3M-february-2018.txt"
     threads: 1
     resources:
-        mem_gb = 1
+        mem_gb = 1,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     log:
-        stdout="logs/gunzip_10x_v3_whitelist/out.o",
-        stderr="logs/gunzip_10x_v3_whitelist/out.e"
+
+
     benchmark:
         "benchmarks/STARSolo/out.txt"
     envmodules:
@@ -329,15 +333,16 @@ rule read_STARsolo_raw_counts:
     output:
         "analysis/STARsolo_raw_counts/{sample}.STARsolo_raw.counts.html"
     log:
-        stdout="logs/read_STARsolo_raw_counts/{sample}.o",
-        stderr="logs/read_STARsolo_raw_counts/{sample}.e"
+
+
     params:
         decoder="whitelists/cellseq192/celseq_barcodes.192.txt"
     envmodules:
         config["R"]
     threads: 1
     resources:
-        mem_gb = 20
+        mem_gb = 20,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     script:
         "scripts/read_star_solo_raw.Rmd"
 
@@ -352,8 +357,8 @@ rule splitBAMByCB:
         done=touch("analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.done"),
         outdir=directory("analysis/variant_calling/00_splitBAMByCB/{sample, [^\/]+}/")
     log:
-        stdout="logs/00_splitBAMByCB/{sample}.o",
-        stderr="logs/00_splitBAMByCB/{sample}.e"
+
+
     benchmark:
         "benchmarks/00_splitBAMByCB/{sample}.txt"
     envmodules:
@@ -362,7 +367,8 @@ rule splitBAMByCB:
         out_pref=lambda wildcards, input: "analysis/variant_calling/00_splitBAMByCB/" + wildcards.sample + "/" + wildcards.sample
     threads: 4
     resources:
-        mem_gb = 96
+        mem_gb = 96,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         bamtools split -in {input} -tag CB -stub {params.out_pref}
@@ -379,18 +385,19 @@ rule append_CB_to_SM:
     params: 
         input="analysis/variant_calling/00_splitBAMByCB/{sample}/{sample}.TAG_CB_{CB}.bam"
     log:
-        stdout="logs/01_append_CB_to_SM/{sample}/{CB}.o",
-        stderr="logs/01_append_CB_to_SM/{sample}/{CB}.e"
+
+
     benchmark:
         "benchmarks/01_append_CB_to_SM/{sample}/{CB}.txt"
     envmodules:
         config["samtools"]
     threads: 4
     resources: 
-        mem_gb = 64
+        mem_gb = 64,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
-        samtools reheader -c 'perl -pe "s/^(@SQ.*)(\\tSM:\S+)/\$1\$2.{wildcards.CB}/"' {params.input} 1> {output} 2> {log.stderr}
+        samtools reheader -c 'perl -pe "s/^(@SQ.*)(\\tSM:\S+)/\$1\$2.{wildcards.CB}/"' {params.input} 1> {output} 
         """
 
 
@@ -407,15 +414,16 @@ rule markdups:
         metrics="analysis/variant_calling/02_markdup/{sample}/{sample}.TAG_CB_{CB}.mrkdup.metrics"
     params: 
     log:
-        stdout="logs/02_markdup/{sample}/{CB}.o",
-        stderr="logs/02_markdup/{sample}/{CB}.e"
+
+
     benchmark:
         "benchmarks/02_markdup/{sample}/{CB}.txt"
     envmodules:
         config["picard"]
     threads: 4
     resources: 
-        mem_gb = 64
+        mem_gb = 64,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         java -Xms16g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp -jar $PICARD MarkDuplicates \
@@ -438,15 +446,16 @@ rule splitncigar:
     params:
         ref_fasta=config["ref"]["sequence"],
     log:
-        stdout="logs/03_splitncigar/{sample}/{CB}.o",
-        stderr="logs/03_splitncigar/{sample}/{CB}.e"
+
+
     benchmark:
         "benchmarks/03_splitncigar/{sample}/{CB}.txt"
     envmodules:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 64
+        mem_gb = 64,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
@@ -465,8 +474,8 @@ rule base_recalibrate:
     output:
         "analysis/variant_calling/04_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.bam.recal_data.table"
     log:
-        stdout="logs/04_base_recal/{sample}/{CB}.o",
-        stderr="logs/04_base_recal/{sample}/{CB}.e"
+
+
     benchmark:
         "benchmarks/04_base_recal/{sample}/{CB}.txt"
     params:
@@ -476,7 +485,8 @@ rule base_recalibrate:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 64
+        mem_gb = 64,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -XX:+UseParallelGC -XX:ParallelGCThreads={threads} -Djava.io.tmpdir=./tmp" \
@@ -497,8 +507,8 @@ rule applyBQSR:
     output:
         "analysis/variant_calling/05_apply_base_recal/{sample}/{sample}.TAG_CB_{CB}.mrkdup.splitncigar.baserecal.bam",
     log:
-        stdout="logs/05_apply_base_recal/{sample}/{CB}.o",
-        stderr="logs/05_apply_base_recal/{sample}/{CB}.e"
+
+
     benchmark:
         "benchmarks/05_apply_base_recal/{sample}/{CB}.txt"
     params:
@@ -507,7 +517,8 @@ rule applyBQSR:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 64
+        mem_gb = 64,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g  -XX:+UseParallelGC -XX:ParallelGCThreads={threads} -Djava.io.tmpdir=./tmp" \
@@ -528,8 +539,8 @@ rule haplotypecaller:
     output:
         temp("analysis/variant_calling/06_haplotypecaller/{sample}/{sample}.TAG_CB_{CB}.{contig_group}.mrkdup.splitncigar.baserecal.g.vcf.gz")
     log:
-        stdout="logs/06_haplotypecaller/{sample}/{CB}.{contig_group}.o",
-        stderr="logs/06_haplotypecaller/{sample}/{CB}.{contig_group}.e"
+
+
     benchmark:
         "benchmarks/06_haplotypecaller/{sample}/{CB}.{contig_group}.txt"
     params:
@@ -540,7 +551,8 @@ rule haplotypecaller:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
@@ -592,8 +604,8 @@ rule combinevar:
         touch=touch("analysis/variant_calling/07_combinevar/{contig_group}.done"),
         genomicsdb=directory("analysis/variant_calling/07_combinevar/{contig_group}.genomicsdb"),
     log:
-        stdout="logs/07_combinevar/all.{contig_group}.o",
-        stderr="logs/07_combinevar/all.{contig_group}.e"
+
+
     benchmark:
         "benchmarks/07_combinevar/{contig_group}.txt"
     params:
@@ -603,7 +615,8 @@ rule combinevar:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
@@ -622,8 +635,8 @@ rule jointgeno:
     output:
         vcf="analysis/variant_calling/08_jointgeno/all.{contig_group}.vcf.gz",
     log:
-        stdout="logs/08_jointgeno/all.{contig_group}.o",
-        stderr="logs/08_jointgeno/all.{contig_group}.e"
+
+
     benchmark:
         "benchmarks/08_jointgeno/all.{contig_group}.txt"
     params:
@@ -633,7 +646,8 @@ rule jointgeno:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
@@ -653,8 +667,8 @@ rule sortVCF:
     output:
         sorted_vcf="analysis/variant_calling/09_sortvcf/all.{contig_group}.sort.vcf.gz"
     log:
-        stdout="logs/09_sortvcf/all.{contig_group}.o",
-        stderr="logs/09_sortvcf/all.{contig_group}.e"
+
+
     benchmark:
         "benchmarks/09_sortvcf/all.{contig_group}.txt"
     params:
@@ -663,7 +677,8 @@ rule sortVCF:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
@@ -687,8 +702,8 @@ rule merge_and_filter_vcf:
         vt_peek_raw="analysis/variant_calling/10a_merge_and_filter/all.merged.vcf.gz.vt_peek.txt",
         vt_peek_pass="analysis/variant_calling/10a_merge_and_filter/all.merged.filt.PASS.vcf.gz.vt_peek.txt"
     log:
-        stdout="logs/10a_merge_and_filter/out.o",
-        stderr="logs/10a_merge_and_filter/err.e"
+
+
     benchmark:
         "benchmarks/10a_merge_and_filter/benchmark.txt"
     params:
@@ -700,7 +715,8 @@ rule merge_and_filter_vcf:
         config["vt"]
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
@@ -709,10 +725,10 @@ rule merge_and_filter_vcf:
         --SEQUENCE_DICTIONARY {params.dictionary} \
         --OUTPUT {output.raw} 
         
-        echo "mergeVcfs done." >> {log.stdout}
-        echo "mergeVcfs done." >> {log.stderr}
+        echo "mergeVcfs done."
+        echo "mergeVcfs done." 1>&2
 
-        vt peek -r {params.ref_fasta} {output.raw} 2> {output.vt_peek_raw} 1>>{log.stdout}
+        vt peek -r {params.ref_fasta} {output.raw} 2> {output.vt_peek_raw} 
 
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
         VariantFiltration \
@@ -730,8 +746,8 @@ rule merge_and_filter_vcf:
         --genotype-filter-expression "DP < 10.0" \
         -O {output.filt} 
         
-        echo "VariantFiltration done." >> {log.stdout}
-        echo "VariantFiltration done." >> {log.stderr}
+        echo "VariantFiltration done."
+        echo "VariantFiltration done." 1>&2
 
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \
         SelectVariants \
@@ -741,10 +757,10 @@ rule merge_and_filter_vcf:
         --set-filtered-gt-to-nocall \
         -O {output.pass_only} 
         
-        echo "SelectVariants done." >> {log.stdout}
-        echo "SelectVariants done." >> {log.stderr}
+        echo "SelectVariants done."
+        echo "SelectVariants done." 1>&2
 
-        vt peek -r {params.ref_fasta} {output.pass_only} 2> {output.vt_peek_pass} 1>>{log.stdout}
+        vt peek -r {params.ref_fasta} {output.pass_only} 2> {output.vt_peek_pass} 
         """
 
 rule reheader_vcf:
@@ -756,8 +772,8 @@ rule reheader_vcf:
     output:
         "analysis/variant_calling/10b_reheader_vcf/all.merged.filt.PASS.reheader.vcf.gz"
     log:
-        stdout="logs/10b_reheader_vcf/out.o",
-        stderr="logs/10b_reheader_vcf/err.e"
+
+
     benchmark:
         "benchmarks/10b_reheader_vcf/bench.txt"
     params:
@@ -766,7 +782,8 @@ rule reheader_vcf:
         config["bcftools"]
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         bcftools reheader --threads {threads} -s {params.sample_decoder} -o {output} {input.vcf}
@@ -784,8 +801,8 @@ rule extract_ADs:
         raw="analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.table",
         parsed="analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.parsed.table",
     log:
-        stdout="logs/11a2_extract_ADs/out.o",
-        stderr="logs/11a2_extract_ADs/err.e"
+
+
     benchmark:
         "benchmarks/11a2_extract_ADs/benchmark.txt"
     params:
@@ -795,7 +812,8 @@ rule extract_ADs:
         config["gatk"],
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
 
     shell:
         """
@@ -826,8 +844,8 @@ rule variant_annot:
         vcf_inGene="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_inGene.vcf.gz",
         tbi_inGene="analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_inGene.vcf.gz.tbi",
     log:
-        stdout="logs/11a_variant_annot/out.o",
-        stderr="logs/11a_variant_annot/out.e"
+
+
     benchmark:
         "benchmarks/11a_variant_annot/benchmark.txt"
     params:
@@ -837,7 +855,8 @@ rule variant_annot:
         config["htslib"]
     threads: 4
     resources: 
-        mem_gb = 80
+        mem_gb = 80,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         # Only use canonical transcript of each gene
@@ -889,13 +908,14 @@ rule snprelate:
         figures_dir="analysis/variant_calling/11b_snp_pca_and_dendro/report_files/figure-html/",
         new_figures_dir="analysis/variant_calling/11b_snp_pca_and_dendro/individual_figures/"
     log:
-        stdout="logs/11b_snp_pca_and_dendro/out.o",
-        stderr="logs/11b_snp_pca_and_dendro/out.e"
+
+
     envmodules:
         config["R"]
     threads: 1
     resources:
-        mem_gb = 60
+        mem_gb = 60,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     script:
         "scripts/snprelate.Rmd"
 
@@ -911,15 +931,16 @@ rule asereadcounter:
         ref_fasta=config["ref"]["sequence"],
         vcf=config['asereadcounter_vcf'] 
     log:
-        stdout="logs/02b_ASEReadCounter/{sample}/{CB}.o",
-        stderr="logs/02b_ASEReadCounter/{sample}/{CB}.e"
+
+
     benchmark:
         "benchmarks/02b_ASEReadCounter/{sample}/{CB}.txt"
     envmodules:
         config["gatk"]
     threads: 4
     resources: 
-        mem_gb = 64
+        mem_gb = 64,
+        log_prefix=lambda wildcards: "_".join(wildcards)
     shell:
         """
         gatk --java-options "-Xms8g -Xmx{resources.mem_gb}g -Djava.io.tmpdir=./tmp" \

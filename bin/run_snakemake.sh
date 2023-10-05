@@ -1,44 +1,44 @@
-#PBS -l walltime=72:00:00
-#PBS -l mem=8gb
-#PBS -N scRNAseq_workflow
-#PBS -o logs/scRNAseq_workflow.o
-#PBS -e logs/scRNAseq_workflow.e
+#!/bin/bash
+#SBATCH --export=NONE
+#SBATCH -J scRNAseq_workflow
+#SBATCH -o scRNAseq_workflow.o
+#SBATCH -e scRNAseq_workflow.e
+#SBATCH --ntasks 1
+#SBATCH --time 48:00:00
+#SBATCH --mem=8G
+#SBATCH --partition=long
 
 set -euo pipefail
 
-cd ${PBS_O_WORKDIR}
+cd $SLURM_SUBMIT_DIR
 
-snakemake_module="bbc/snakemake/snakemake-6.1.0"
-module load ${snakemake_module}
+snakemake_module="bbc2/snakemake/snakemake-7.25.0"
 
-# make logs dir if it does not exist already. Without this, logs/ is automatically generate only after the first run of the pipeline
-logs_dir="logs/snakemake_runs"
+module load $snakemake_module
+
+# make logs dir if it does not exist already. 
+logs_dir="logs/"
 [[ -d $logs_dir ]] || mkdir -p $logs_dir
 
-TIME=$(date "+%Y-%m-%d_%H.%M.%S")
-#snakemake --snakefile 'Snakefile' --dag | dot -Tpng > $logs_dir/dag_${PBS_JOBID}.png
-#snakemake --snakefile 'Snakefile' --filegraph | dot -Tpng > $logs_dir/filegraph_${PBS_JOBID}.png
-snakemake --snakefile 'Snakefile' --rulegraph | dot -Tpng > $logs_dir/rulegraph_${PBS_JOBID}.png
 
 echo "Start snakemake workflow." >&1                   
-echo "Start snakemake workflow." >&2                   
+echo "Start snakemake workflow." >&2     
 
 snakemake \
 -p \
 --latency-wait 20 \
---notemp \
 --snakefile 'Snakefile' \
 --use-envmodules \
 --jobs 100 \
---cluster "ssh ${PBS_O_LOGNAME}@submit 'module load ${snakemake_module}; cd ${PBS_O_WORKDIR}; qsub \
--q ${PBS_O_QUEUE} \
--V \
--l nodes=1:ppn={threads} \
--l mem={resources.mem_gb}gb \
--l walltime=24:00:00 \
--o {log.stdout} \
--e {log.stderr}'"
+--cluster "mkdir -p logs/{rule}; sbatch \
+-p ${SLURM_JOB_PARTITION} \
+--export=ALL \
+--ntasks {threads} \
+--mem={resources.mem_gb}G \
+-t 24:00:00 \
+-o logs/{rule}/{resources.log_prefix}.o \
+-e logs/{rule}/{resources.log_prefix}.e" # SLURM hangs if output dir does not exist, so we create it before running sbatch on the snakemake jobs.
 
 echo "snakemake workflow done." >&1                   
-echo "snakemake workflow done." >&2                   
+echo "snakemake workflow done." >&2                
 
