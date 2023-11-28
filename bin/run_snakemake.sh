@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-cd $SLURM_SUBMIT_DIR
+cd "$SLURM_SUBMIT_DIR"
 
 snakemake_module="bbc2/snakemake/snakemake-7.25.0"
 
