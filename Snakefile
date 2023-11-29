@@ -85,7 +85,7 @@ rule all:
         ['analysis/variant_calling/11a_variant_annot/all.merged.filt.PASS.snpeff_canonical.vcf.gz',
         'analysis/variant_calling/11b_snp_pca_and_dendro/report.html',
         'analysis/variant_calling/11a2_extract_ADs/all.merged.filt.PASS.snpeff_inGene.AD.parsed.table'] if config['call_variants'] else [],
-        get_bams_for_asereadcounter
+        get_bams_for_asereadcounter if config['run_asereadcounter'] else [],
 
 rule fastqc:
     """

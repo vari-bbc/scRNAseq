@@ -19,7 +19,7 @@ scrnaseq_tech: cellseq192
 run_rna_velocity: True
 
 # If True, will run the GATK RNA-seq variants workflow on the STARSolo BAMs
-call_variants: True
+call_variants: False
 call_variant_filtered_cells_only: True # only matters if 'call_variants' is True. If True, then only call variants on the 'filtered' cells from STARsolo.
 
 
@@ -33,6 +33,7 @@ sample_decoder: ""
 # VCF for ASEReadCounter
 # Multiallelic variants ignored by ASEReadCounter.
 # Variants without heterozygous genotype calls in the VCF are skipped.
+run_asereadcounter: False
 asereadcounter_vcf: dgrp2_vcf/dgrp2_dm6.no_chrUn.subset.FAKEHETS.vcf.gz
 
 # Packages
