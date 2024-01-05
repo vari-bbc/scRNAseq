@@ -17,7 +17,7 @@ This workflow runs STARsolo with the appropriate parameters for the particular s
 
    **For variant calling**, set 'call_variants' to True. **To variant call only a subset of the cell barcodes**, specify only those barcodes in the 'sample_decoder' file. See config file for more info.
 
-5. Run `qsub -q bbc bin/run_snakemake.sh`.
+5. Run `sbatch bbc bin/run_snakemake.sh`.
 
 # Helpful commands
 `snakemake -l`: Print all the rules and a description of what it does.
