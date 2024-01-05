@@ -36,6 +36,12 @@ if [[ $(groups) =~ bbc ]]; then
     if [[ $bbc_use_specified_sbatch_partition == false ]]; then
         SLURM_JOB_PARTITION="bbc"
     fi
+else
+    # if SLURM_JOB_PARTITION is bbc but user isn't in the BBC, error with message.
+    if [[ $SLURM_JOB_PARTITION == "bbc" ]]; then
+        echo "You are not a member of the BBC, so you cannot use the bbc partition. Please specify a different partition." >&2
+        exit 1
+    fi
 fi
 
 snakemake \
