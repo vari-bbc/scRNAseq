@@ -10,6 +10,12 @@
 
 set -euo pipefail
 
+# If you're in the BBC, this script will use the bbc partition by default.
+# If BBC members want to override this and use a different partition,
+# specify your desired partition in the header above, 
+# and set the "bbc_use_specified_sbatch_partition" variable to true.
+bbc_use_specified_sbatch_partition=false
+
 cd "$SLURM_SUBMIT_DIR"
 
 snakemake_module="bbc2/snakemake/snakemake-7.25.0"
@@ -22,12 +28,20 @@ logs_dir="logs/"
 
 
 echo "Start snakemake workflow." >&1                   
-echo "Start snakemake workflow." >&2     
+echo "Start snakemake workflow." >&2    
+
+# if user belongs to a group with "bbc" in the name, then set slurm partition to "bbc"
+# if the bbc_use_specified_sbatch_partition variable is set to true, then use the SLURM_JOB_PARTITION variable.
+if [[ $(groups) =~ bbc ]]; then
+    if [[ $bbc_use_specified_sbatch_partition == false ]]; then
+        SLURM_JOB_PARTITION="bbc"
+    fi
+fi
 
 snakemake \
 -p \
 --latency-wait 20 \
---snakefile 'Snakefile' \
+--snakefile 'Snakefile2' \
 --use-envmodules \
 --jobs 100 \
 --cluster "mkdir -p logs/{rule}; sbatch \
