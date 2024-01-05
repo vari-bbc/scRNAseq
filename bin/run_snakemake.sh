@@ -41,7 +41,7 @@ fi
 snakemake \
 -p \
 --latency-wait 20 \
---snakefile 'Snakefile2' \
+--snakefile 'Snakefile' \
 --use-envmodules \
 --jobs 100 \
 --cluster "mkdir -p logs/{rule}; sbatch \
