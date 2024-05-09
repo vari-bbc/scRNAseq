@@ -12,6 +12,11 @@ ref:
   # SNPEff database ID. Ensure that the requested SNPEff database has been prepared.
   snpeff_db_id: 'BDGP6.86'
 
+# Turn on to run trim_galore. Mainly intended for libraries sequenced to a read length longer than the mean fragment size, which can cause mapping issues.
+hard_trim:
+  run: False
+  len: 200 # sets --hardtrim5 in trim_galore, which will "hard-clip sequences from their 3' end" to the read length set here.
+
 # Valid values are 'indrop_v2', '10x_v1', '10x_v2', '10x_v3', 'cellseq192'
 scrnaseq_tech: cellseq192
 
@@ -50,4 +55,5 @@ R: "bbc2/R/alt/R-4.2.1-setR_LIBS_USER"
 samtools: "bbc2/samtools/samtools-1.17"
 SnpEff: "bbc2/SnpEff/SnpEff-5.1"
 STAR: "bbc2/STAR/STAR-2.7.11a"
+trim_galore: "bbc2/trim_galore/trim_galore-0.6.10"
 vt: "bbc2/vt/vt-0.1.16"

@@ -140,6 +140,39 @@ rule fastq_screen:
         fastq_screen --threads {threads} --outdir analysis/fastq_screen/ {input}
         """
 
+rule trim_galore_hardtrim:
+    """
+    Libraries sequenced to a read length longer than the mean fragment size can cause issues with alignment. Optional hard trimming to mitigate that.
+    """
+    input:
+        expand("raw_data/{{sample}}_L000_R{read}_001.fastq.gz", read=["1","2"])
+    output:
+        fqs=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R{read}_001.{{trimlen}}bp_5prime.fq.gz", read=["1","2"]),
+        renamed_fqs=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R{read}_001.fastq.gz", read=["1","2"]),
+        r1_report=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R1_001{ext}", ext=["_fastqc.html", "_fastqc.zip"]),
+        r2_report=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R2_001{ext}", ext=["_fastqc.html", "_fastqc.zip"]),
+    params:
+        outdir=lambda wildcards, output: os.path.dirname(output.fqs[0])
+    benchmark:
+        "benchmarks/trim_galore_trim{trimlen}/{sample}.txt"
+    envmodules:
+        config['trim_galore'],
+        config['fastqc']
+    threads: 16
+    resources:
+        mem_gb = 240,
+        log_prefix=lambda wildcards: "_".join(wildcards)
+    shell:
+        """
+        trim_galore --paired {input} --length 15 --hardtrim5 {wildcards.trimlen} --output_dir {params.outdir} --cores {threads}
+
+        ln -sr {output.fqs[0]} {output.renamed_fqs[0]}
+        ln -sr {output.fqs[1]} {output.renamed_fqs[1]}
+
+        fastqc {output.renamed_fqs[0]}
+        fastqc {output.renamed_fqs[1]}
+        """
+
 def get_star_solo_params(wildcards):
     # modify parameters depending on scRNA-seq tech
     if(config["scrnaseq_tech"] == "indrop_v2"):
@@ -200,11 +233,19 @@ def get_star_solo_params(wildcards):
     return(star_solo_params)
 
 
-def get_star_solo_input(wildcards):
+def get_star_solo_input_files(wildcards):
     star_solo_input = {}
-    fq1_files = expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1'])
-    fq2_files = expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2'])
+    fq_dir = "analysis/trim_galore_trim{len}".format(len=config['hard_trim']['len']) if config['hard_trim']['run'] else "raw_data"
+    star_solo_input['fq1'] = expand("{fq_dir}/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1'], fq_dir = fq_dir)
+    star_solo_input['fq2'] = expand("{fq_dir}/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2'], fq_dir = fq_dir)
+    return(star_solo_input)
 
+def get_star_solo_input_params(wildcards):
+    star_solo_input = {}
+    fq_files = get_star_solo_input_files(wildcards)
+    fq1_files = fq_files['fq1']
+    fq2_files = fq_files['fq2']
+    
     if(config["scrnaseq_tech"] in ["10x_v1", "10x_v2", "10x_v3", "cellseq192"]):
         star_solo_input['fqs'] = ','.join(fq2_files) + ' ' + ','.join(fq1_files)
     else:
@@ -251,8 +292,7 @@ checkpoint STARsolo:
     Run STARsolo.
     """
     input:
-        lambda wildcards: expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1']),
-        lambda wildcards: expand("raw_data/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2']),
+        unpack(get_star_solo_input_files),
         "whitelists/10x_v3/3M-february-2018.txt" if config["scrnaseq_tech"] == "10x_v3" else [],
     output:
         star = multiext("analysis/STARsolo/{sample}.", 
@@ -267,7 +307,7 @@ checkpoint STARsolo:
         index = config["ref"]["index"],
         outprefix = "analysis/STARsolo/{sample}.",
         tech_params = get_star_solo_params,
-        fqs_and_rg = get_star_solo_input
+        fqs_and_rg = get_star_solo_input_params
     threads: 16
     resources:
         mem_gb = 180,
