@@ -14,6 +14,7 @@ validate(config, schema="schemas/config.schema.yaml")
 
 samples = pd.read_table("bin/samples.tsv")
 validate(samples, "schemas/samples.schema.yaml")
+samples['group_index'] = samples.groupby('sample').cumcount().astype(str)
 
 if not os.path.exists('tmp'):
     os.mkdir('tmp')
@@ -140,21 +141,49 @@ rule fastq_screen:
         fastq_screen --threads {threads} --outdir analysis/fastq_screen/ {input}
         """
 
+def get_orig_fastq(wildcards):
+    if wildcards.read == "R1":
+            fastq = samples[(samples["sample"] == wildcards.sample) & (samples["group_index"] == wildcards.group_index)]["fq1"]
+    elif wildcards.read == "R2":
+            fastq = samples[(samples["sample"] == wildcards.sample) & (samples["group_index"] == wildcards.group_index)]["fq2"]
+    return 'raw_data/' + fastq
+
+rule rename_fastqs:
+    """
+    Rename fastqs to consistent style for trimgalore.
+    """
+    input:
+        get_orig_fastq
+    output:
+        "analysis/rename_fastqs/{sample}_{group_index}_{read}.fastq.gz"
+    benchmark:
+        "benchmarks/rename_fastqs/{sample}_{group_index}_{read}.txt"
+    params:
+    threads: 1
+    resources:
+        mem_gb=4,
+        log_prefix=lambda wildcards: "_".join(wildcards) if len(wildcards) > 0 else "log"
+    envmodules:
+    shell:
+        """
+        ln -sr {input} {output}
+        """
+
 rule trim_galore_hardtrim:
     """
     Libraries sequenced to a read length longer than the mean fragment size can cause issues with alignment. Optional hard trimming to mitigate that.
     """
     input:
-        expand("raw_data/{{sample}}_L000_R{read}_001.fastq.gz", read=["1","2"])
+        expand("analysis/rename_fastqs/{{sample}}_{{group_index}}_R{read}.fastq.gz", read=["1","2"])
     output:
-        fqs=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R{read}_001.{{trimlen}}bp_5prime.fq.gz", read=["1","2"]),
-        renamed_fqs=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R{read}_001.fastq.gz", read=["1","2"]),
-        r1_report=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R1_001{ext}", ext=["_fastqc.html", "_fastqc.zip"]),
-        r2_report=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_L000_R2_001{ext}", ext=["_fastqc.html", "_fastqc.zip"]),
+        fqs=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_{{group_index}}_R{read}.{{trimlen}}bp_5prime.fq.gz", read=["1","2"]),
+        renamed_fqs=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_{{group_index}}_R{read}.fastq.gz", read=["1","2"]),
+        r1_report=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_{{group_index}}_R1{ext}", ext=["_fastqc.html", "_fastqc.zip"]),
+        r2_report=expand("analysis/trim_galore_trim{{trimlen}}/{{sample}}_{{group_index}}_R2{ext}", ext=["_fastqc.html", "_fastqc.zip"]),
     params:
         outdir=lambda wildcards, output: os.path.dirname(output.fqs[0])
     benchmark:
-        "benchmarks/trim_galore_trim{trimlen}/{sample}.txt"
+        "benchmarks/trim_galore_trim{trimlen}/{sample}_{group_index}.txt"
     envmodules:
         config['trim_galore'],
         config['fastqc']
@@ -235,9 +264,14 @@ def get_star_solo_params(wildcards):
 
 def get_star_solo_input_files(wildcards):
     star_solo_input = {}
-    fq_dir = "analysis/trim_galore_trim{len}".format(len=config['hard_trim']['len']) if config['hard_trim']['run'] else "raw_data"
-    star_solo_input['fq1'] = expand("{fq_dir}/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1'], fq_dir = fq_dir)
-    star_solo_input['fq2'] = expand("{fq_dir}/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2'], fq_dir = fq_dir)
+    if (config['hard_trim']['run']):
+        fq_dir = "analysis/trim_galore_trim{trimlen}".format(trimlen=config['hard_trim']['len'])
+        star_solo_input['fq1'] = expand("{fq_dir}/{sample}_{group_index}_R1.fastq.gz", sample=wildcards.sample, fq_dir = fq_dir, group_index = samples[samples['sample']==wildcards.sample]['group_index'])
+        star_solo_input['fq2'] = expand("{fq_dir}/{sample}_{group_index}_R2.fastq.gz", sample=wildcards.sample, fq_dir = fq_dir, group_index = samples[samples['sample']==wildcards.sample]['group_index'])
+    else:
+        fq_dir = "raw_data"
+        star_solo_input['fq1'] = expand("{fq_dir}/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq1'], fq_dir = fq_dir)
+        star_solo_input['fq2'] = expand("{fq_dir}/{fq}", fq=samples[samples['sample']==wildcards.sample]['fq2'], fq_dir = fq_dir) 
     return(star_solo_input)
 
 def get_star_solo_input_params(wildcards):
